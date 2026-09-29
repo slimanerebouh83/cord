@@ -159,6 +159,61 @@ def parse_fallback_tool_calls(
             },
         })
 
+    # 3. Match Gemini internal call format: <call:(?:default_api:)?([a-zA-Z0-9_-]+)\{([\s\S]*?)\}(?:>)?
+    gemini_pattern = re.compile(
+        r"<call:(?:[a-zA-Z0-9_-]+:)?([a-zA-Z0-9_-]+)\{([\s\S]*?)(?:\}(?:>)?|$)",
+        re.DOTALL
+    )
+    for match in gemini_pattern.finditer(text):
+        tag_name = match.group(1).strip()
+        tag_lower = tag_name.lower()
+        body = match.group(2).strip()
+
+        matched_tool = None
+        if tag_name in tool_names:
+            matched_tool = tag_name
+        elif tag_lower in tool_names:
+            matched_tool = tag_lower
+        else:
+            for t in tool_names:
+                if t.lower() == tag_name.lower() or t.replace("_", "") == tag_name.lower().replace("_", ""):
+                    matched_tool = t
+                    break
+
+        if not matched_tool:
+            continue
+
+        args: Dict[str, Any] = {}
+        # Parse Gemini arguments: keys separated by comma or newline followed by identifier and colon
+        arg_pattern = re.compile(r"(?:^|[\n,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[:=]\s*", re.MULTILINE)
+        arg_matches = list(arg_pattern.finditer(body))
+        if arg_matches:
+            for i, am in enumerate(arg_matches):
+                k = am.group(1).strip()
+                v_start = am.end()
+                v_end = arg_matches[i + 1].start() if i + 1 < len(arg_matches) else len(body)
+                val = body[v_start:v_end].strip()
+                val = re.sub(r"[\s,}]+$", "", val)
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                args[k] = val
+        else:
+            try:
+                parsed = yaml.safe_load(body)
+                if isinstance(parsed, dict):
+                    args.update(parsed)
+            except Exception:
+                pass
+
+        tool_calls.append({
+            "id": f"call_gemini_{len(tool_calls)}",
+            "type": "function",
+            "function": {
+                "name": matched_tool,
+                "arguments": json.dumps(args, ensure_ascii=False),
+            },
+        })
+
     return tool_calls
 
 
@@ -174,4 +229,88 @@ def strip_tool_xml_from_text(text: str, executed_tools: List[Dict[str, Any]]) ->
             clean = re.sub(rf"<{name}(?:\s+[^>]*)?>[\s\S]*?<\/{name}>", "", clean, flags=re.IGNORECASE)
     
     clean = re.sub(r"<(?:tool_call|function_call)>[\s\S]*?<\/(?:tool_call|function_call)>", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"<call:(?:[a-zA-Z0-9_-]+:)?([a-zA-Z0-9_-]+)\{[\s\S]*?(?:\}(?:>)?|$)", "", clean)
     return clean.strip()
+
+
+class ToolTextFilter:
+    """
+    Filters raw tool call markup (<call:...> or <tool_name>...) out of streaming terminal output
+    so that users never see raw tool syntax dumped onto their screen.
+    """
+    def __init__(self, known_tools: Union[Set[str], List[str], Dict[str, Any]]):
+        self.known_tools = set(known_tools.keys()) if isinstance(known_tools, dict) else set(known_tools)
+        self.buffer = ""
+        self.suppressing = False
+
+    def feed(self, chunk: str) -> str:
+        if not chunk:
+            return ""
+        self.buffer += chunk
+        output = ""
+
+        while self.buffer:
+            if not self.suppressing:
+                lower = self.buffer.lower()
+                call_pos = lower.find("<call:")
+                tag_pos = -1
+                for t in self.known_tools:
+                    p = lower.find(f"<{t.lower()}")
+                    if p != -1 and (tag_pos == -1 or p < tag_pos):
+                        tag_pos = p
+
+                for gen in ("<tool_call>", "<function_call>"):
+                    p = lower.find(gen)
+                    if p != -1 and (tag_pos == -1 or p < tag_pos):
+                        tag_pos = p
+
+                earliest = -1
+                if call_pos != -1 and tag_pos != -1:
+                    earliest = min(call_pos, tag_pos)
+                elif call_pos != -1:
+                    earliest = call_pos
+                elif tag_pos != -1:
+                    earliest = tag_pos
+
+                if earliest != -1:
+                    output += self.buffer[:earliest]
+                    self.buffer = self.buffer[earliest:]
+                    self.suppressing = True
+                else:
+                    if "<" in self.buffer:
+                        last_lt = self.buffer.rfind("<")
+                        if len(self.buffer) - last_lt < 25:
+                            output += self.buffer[:last_lt]
+                            self.buffer = self.buffer[last_lt:]
+                            break
+                    output += self.buffer
+                    self.buffer = ""
+            else:
+                end_pos = -1
+                if self.buffer.startswith("<call:"):
+                    close_brace = self.buffer.find("}")
+                    if close_brace != -1:
+                        end_pos = close_brace + 1
+                        if end_pos < len(self.buffer) and self.buffer[end_pos] == ">":
+                            end_pos += 1
+                else:
+                    if "</" in self.buffer:
+                        close_tag_end = self.buffer.find(">", self.buffer.find("</"))
+                        if close_tag_end != -1:
+                            end_pos = close_tag_end + 1
+
+                if end_pos != -1:
+                    self.buffer = self.buffer[end_pos:]
+                    self.suppressing = False
+                else:
+                    break
+
+        return output
+
+    def flush(self) -> str:
+        if self.suppressing:
+            self.buffer = ""
+            return ""
+        res = self.buffer
+        self.buffer = ""
+        return res

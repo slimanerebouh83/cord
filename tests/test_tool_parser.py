@@ -85,3 +85,47 @@ def test_strip_tool_xml():
     assert "Hello!" in cleaned
     assert "Done!" in cleaned
     assert "<write_file>" not in cleaned
+
+
+def test_parse_gemini_call():
+    sample = """<call:default_api:write_file{content:import tkinter as tk
+from tkinter import messagebox
+
+class Calculator(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("آلة حاسبة - CORD Calculator")
+
+if __name__ == "__main__":
+    app = Calculator()
+    app.mainloop()
+,path:calculator.py}"""
+
+    calls = parse_fallback_tool_calls(sample, {"write_file"})
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "write_file"
+    args = json.loads(calls[0]["function"]["arguments"])
+    assert args["path"] == "calculator.py"
+    assert "import tkinter as tk" in args["content"]
+    assert "CORD Calculator" in args["content"]
+
+
+def test_tool_text_filter():
+    from cord.core.tool_parser import ToolTextFilter
+    f = ToolTextFilter({"write_file", "execute_command"})
+    
+    # 1. Normal text passes through
+    out1 = f.feed("I am going to build your calculator now.\n")
+    assert "I am going to build" in out1
+
+    # 2. Tool call is suppressed
+    gemini_chunk = "<call:default_api:write_file{content:hello,path:calc.py}>"
+    out2 = f.feed(gemini_chunk)
+    assert "write_file" not in out2
+    assert "calc.py" not in out2
+
+    # 3. Post text passes through
+    out3 = f.feed("\nDone creating the application!")
+    assert "Done creating" in out3
+
+

@@ -77,16 +77,14 @@ You operate directly in the user's terminal, similar to Claude Code, OpenAI Code
 - Make intelligent engineering decisions, choose standard best practices, and execute tools directly.
 - The user expects you to accomplish the work completely and independently, not to interrogate them.
 
-### Continuous Deep Thinking & Reasoning (MANDATORY FOR ALL MODELS):
-- **Always Output Your Reasoning First**: Before providing any response or calling any tool, you MUST write your internal reasoning, analytical deduction, and plan inside `<thought>...</thought>` blocks.
-- **Write As Plain Text**: Output `<thought>...</thought>` directly as plain text in your response message. NEVER invoke or call a tool/function named `think` or `thought`.
-- **Detailed Step-by-Step Breakdown**: In your `<thought>` block, analyze the user's intent, review constraints, outline your step-by-step logic, and double-check edge cases.
-- **Never Skip Thinking**: Even for simple answers or tool invocations, begin with a concise `<thought>...</thought>` deliberation before giving the final answer or tool call.
-- **Thought Formatting**: Wrap all internal deliberations strictly between `<thought>` and `</thought>` tags.
+### Continuous Deep Thinking & Reasoning:
+- **Think Before Actions**: Deliberate thoroughly on the user's intent, review constraints, and plan your architecture.
+- **Action-Oriented Execution**: When taking action (creating plans, modifying files, running commands), execute the appropriate tool calls immediately.
+- **Thought Formatting**: Wrap internal deliberations strictly between `<thought>` and `</thought>` tags.
 
 ### Tool Invocation Rules (CRITICAL):
 - **ALWAYS USE NATIVE FUNCTION CALLS**: You MUST invoke all tools (`create_plan`, `write_file`, `edit_file`, `execute_command`, `read_file`, etc.) exclusively using the API's native function calling / `tool_calls` mechanism.
-- **NEVER WRITE XML TOOL TAGS AS TEXT**: Do NOT write XML tags such as `<write_file>`, `<execute_command>`, `<create_plan>`, or `<edit_file>` as plain text inside your response message. Only reasoning belongs in `<thought>` text blocks; all actions must be executed via real tool calls.
+- **NEVER WRITE XML OR CALL TAGS AS TEXT**: Do NOT write XML or call tags such as `<write_file>`, `<execute_command>`, `<create_plan>`, or `<call:default_api:...>` as plain text inside your response message. Only reasoning belongs in `<thought>` text blocks; all actions must be executed via real tool calls.
 
 ### Surgical Code Modifications (CRITICAL):
 - **NEVER Rewrite From Scratch**: When modifying existing code, NEVER overwrite the entire file using `write_file`.
@@ -216,6 +214,8 @@ class CordAgent:
             header_printed = False
             thinking_header_printed = False
             failed_over = False
+            from cord.core.tool_parser import ToolTextFilter
+            tool_text_filter = ToolTextFilter(self.tools.tools)
 
             # Telemetry tracking
             t_llm_start = time.time()
@@ -262,16 +262,18 @@ class CordAgent:
 
                     # Assistant text
                     if chunk.text:
-                        # Close thinking frame if was open
-                        if thinking_header_printed:
-                            ui.console.print("\n[bold #a855f7]╰" + "─" * 60 + "╯[/bold #a855f7]\n")
-                            thinking_header_printed = False
-
-                        if not header_printed:
-                            renderer.render_assistant_header(self.config.model)
-                            header_printed = True
                         assistant_text += chunk.text
-                        ui.console.print(chunk.text, end="")
+                        display_text = tool_text_filter.feed(chunk.text)
+                        if display_text:
+                            # Close thinking frame if was open
+                            if thinking_header_printed:
+                                ui.console.print("\n[bold #a855f7]╰" + "─" * 60 + "╯[/bold #a855f7]\n")
+                                thinking_header_printed = False
+
+                            if not header_printed:
+                                renderer.render_assistant_header(self.config.model)
+                                header_printed = True
+                            ui.console.print(display_text, end="")
 
                     # Tool call accumulation
                     if chunk.tool_call_delta:
@@ -306,6 +308,13 @@ class CordAgent:
 
                 if thinking_header_printed:
                     ui.console.print("\n[bold #a855f7]╰" + "─" * 60 + "╯[/bold #a855f7]\n")
+
+                remaining = tool_text_filter.flush()
+                if remaining:
+                    if not header_printed:
+                        renderer.render_assistant_header(self.config.model)
+                        header_printed = True
+                    ui.console.print(remaining, end="")
 
                 if header_printed:
                     ui.console.print("")
