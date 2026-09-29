@@ -110,7 +110,7 @@ Full internationalization with native Right-to-Left (RTL) support:
 
 ### 2. Clone the Repository (استنساخ المشروع)
 ```bash
-git clone https://github.com/<your-username>/cord.git
+git clone https://github.com/slimanerebouh83/cord.git
 cd cord
 ```
 
