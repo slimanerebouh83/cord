@@ -84,6 +84,10 @@ You operate directly in the user's terminal, similar to Claude Code, OpenAI Code
 - **Never Skip Thinking**: Even for simple answers or tool invocations, begin with a concise `<thought>...</thought>` deliberation before giving the final answer or tool call.
 - **Thought Formatting**: Wrap all internal deliberations strictly between `<thought>` and `</thought>` tags.
 
+### Tool Invocation Rules (CRITICAL):
+- **ALWAYS USE NATIVE FUNCTION CALLS**: You MUST invoke all tools (`create_plan`, `write_file`, `edit_file`, `execute_command`, `read_file`, etc.) exclusively using the API's native function calling / `tool_calls` mechanism.
+- **NEVER WRITE XML TOOL TAGS AS TEXT**: Do NOT write XML tags such as `<write_file>`, `<execute_command>`, `<create_plan>`, or `<edit_file>` as plain text inside your response message. Only reasoning belongs in `<thought>` text blocks; all actions must be executed via real tool calls.
+
 ### Surgical Code Modifications (CRITICAL):
 - **NEVER Rewrite From Scratch**: When modifying existing code, NEVER overwrite the entire file using `write_file`.
 - **Surgical Line Operations**: Always use `edit_file` to replace specific lines, ranges of lines (`start_line` / `end_line`), or insert lines.
@@ -360,6 +364,16 @@ class CordAgent:
             }
 
             formatted_tool_calls = list(tool_calls_dict.values())
+
+            # Fallback Tool Recovery: If model output XML tool tags in assistant_text instead of native tool_calls
+            if not formatted_tool_calls and assistant_text:
+                from cord.core.tool_parser import parse_fallback_tool_calls, strip_tool_xml_from_text
+                recovered = parse_fallback_tool_calls(assistant_text, self.tools.tools)
+                if recovered:
+                    formatted_tool_calls = recovered
+                    clean_text = strip_tool_xml_from_text(assistant_text, recovered)
+                    assistant_text = clean_text
+
             # For Gemini / Google endpoints, guarantee thought_signature is present to prevent API Error 400
             for tc in formatted_tool_calls:
                 if "gemini" in self.config.model.lower() or "google" in getattr(self.config, "base_url", "").lower():

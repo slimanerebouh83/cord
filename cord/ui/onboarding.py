@@ -13,7 +13,7 @@ from rich.text import Text
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
 
-from cord.core.config import CordConfig, ConfigManager, PROVIDER_PRESETS
+from cord.core.config import CordConfig, ConfigManager, PROVIDER_PRESETS, normalize_base_url
 from cord.ui.console import ui, CordConsole, LOGO_ASCII, SUBTITLE
 
 
@@ -65,10 +65,13 @@ def run_onboarding_wizard(config_mgr: ConfigManager) -> CordConfig:
     # Step 2: Base URL
     console.print(f"\n[header]Step 2 of 5: API Base URL[/header]")
     console.print(f"[dim]Default for {provider_name} is [cyan]{preset['base_url']}[/cyan][/dim]")
-    base_url = Prompt.ask(
+    entered_url = Prompt.ask(
         "Enter Base URL",
         default=preset["base_url"],
-    ).strip()
+    )
+    base_url, notice = normalize_base_url(entered_url)
+    if notice:
+        ui.print_info(f"[yellow]{notice}[/yellow]")
 
     # Step 3: API Key
     console.print(f"\n[header]Step 3 of 5: API Key[/header]")

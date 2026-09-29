@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 
-from cord.core.config import PROVIDER_PRESETS, ConfigManager, CordConfig
+from cord.core.config import PROVIDER_PRESETS, ConfigManager, CordConfig, normalize_base_url
 
 
 @dataclass
@@ -122,7 +122,7 @@ class ProviderManager:
     ) -> Dict[str, Any]:
         """Registers a new custom model provider."""
         key = name.strip().lower().replace(" ", "_")
-        clean_url = base_url.strip().rstrip("/")
+        clean_url, _ = normalize_base_url(base_url)
         model_list = models or [default_model]
         if default_model not in model_list:
             model_list.insert(0, default_model)

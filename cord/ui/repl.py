@@ -25,7 +25,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-from cord.core.config import ConfigManager, CordConfig, PROVIDER_PRESETS
+from cord.core.config import ConfigManager, CordConfig, PROVIDER_PRESETS, normalize_base_url
 from cord.core.agent import CordAgent
 from cord.core.planner import plan_mgr
 from cord.core.checkpoints import checkpoint_mgr
@@ -891,17 +891,20 @@ class CordREPL:
                 else:
                     pname = parts[1]
                     purl = parts[2]
+                    clean_purl, pnotice = normalize_base_url(purl)
+                    if pnotice:
+                        ui.print_info(f"[yellow]{pnotice}[/yellow]")
                     pkey = parts[3] if len(parts) > 3 and parts[3] != "none" else None
                     pmodel = parts[4] if len(parts) > 4 else "default"
                     pfmt = parts[5] if len(parts) > 5 else "openai"
                     res = provider_mgr.add_provider(
                         name=pname,
-                        base_url=purl,
+                        base_url=clean_purl,
                         api_key=pkey,
                         default_model=pmodel,
                         api_format=pfmt,
                     )
-                    ui.print_success(f"Registered custom provider [bold cyan]{pname}[/bold cyan] ({purl})")
+                    ui.print_success(f"Registered custom provider [bold cyan]{pname}[/bold cyan] ({clean_purl})")
 
             elif sub == "delete":
                 if len(parts) < 2:

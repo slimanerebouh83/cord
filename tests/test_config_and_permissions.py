@@ -4,7 +4,7 @@ Tests for CORD CLI Configuration and Permissions.
 
 import pytest
 from pathlib import Path
-from cord.core.config import CordConfig, ConfigManager, PROVIDER_PRESETS
+from cord.core.config import CordConfig, ConfigManager, PROVIDER_PRESETS, normalize_base_url
 from cord.core.permissions import PermissionGuard, READ_ONLY_TOOLS
 
 
@@ -49,3 +49,28 @@ def test_permission_guard_balanced_mode():
 
     allowed, _ = guard.check_permission("grep_search", {"query": "foo"})
     assert allowed is True
+
+
+def test_normalize_base_url():
+    url, note = normalize_base_url("https://openrouter.ai/api/v1/chat/completions")
+    assert url == "https://openrouter.ai/api/v1"
+    assert note is not None
+    assert "/chat/completions" in note
+
+    url, note = normalize_base_url("https://openrouter.ai/api/v1/chat")
+    assert url == "https://openrouter.ai/api/v1"
+    assert note is not None
+
+    url, note = normalize_base_url("https://api.anthropic.com/v1/messages")
+    assert url == "https://api.anthropic.com/v1"
+    assert note is not None
+
+    # Normal base URL should have no notice
+    url, note = normalize_base_url("https://openrouter.ai/api/v1")
+    assert url == "https://openrouter.ai/api/v1"
+    assert note is None
+
+    # CordConfig auto-cleans base_url on initialization
+    cfg = CordConfig(base_url="https://openrouter.ai/api/v1/chat/completions/")
+    assert cfg.base_url == "https://openrouter.ai/api/v1"
+

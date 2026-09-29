@@ -248,9 +248,16 @@ class Subagent:
                     provider=self.config.provider,
                 )
 
+            formatted_calls = list(tool_calls_dict.values())
+            if not formatted_calls and assistant_text:
+                from cord.core.tool_parser import parse_fallback_tool_calls, strip_tool_xml_from_text
+                recovered = parse_fallback_tool_calls(assistant_text, self.tools.tools)
+                if recovered:
+                    formatted_calls = recovered
+                    assistant_text = strip_tool_xml_from_text(assistant_text, recovered)
+
             # Build message entry
             msg_obj: Dict[str, Any] = {"role": "assistant", "content": assistant_text or ""}
-            formatted_calls = list(tool_calls_dict.values())
             if formatted_calls:
                 msg_obj["tool_calls"] = formatted_calls
             self.messages.append(msg_obj)

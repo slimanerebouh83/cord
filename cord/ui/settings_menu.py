@@ -8,7 +8,7 @@ from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 
-from cord.core.config import ConfigManager, PROVIDER_PRESETS
+from cord.core.config import ConfigManager, PROVIDER_PRESETS, normalize_base_url
 from cord.ui.console import ui
 from cord.ui.onboarding import test_connection, run_onboarding_wizard
 
@@ -56,11 +56,10 @@ def show_settings_menu(config_mgr: ConfigManager) -> None:
             config_mgr.save_global_config(cfg)
             ui.print_success(f"Provider switched to {p.upper()} (Base URL: {cfg.base_url}, Model: {cfg.model})")
         elif choice == "2":
-            new_url = Prompt.ask("Enter Base URL", default=cfg.base_url).strip().rstrip("/")
-            if new_url.endswith("/chat/completions"):
-                new_url = new_url[:-17].rstrip("/")
-            elif new_url.endswith("/chat"):
-                new_url = new_url[:-5].rstrip("/")
+            entered_url = Prompt.ask("Enter Base URL", default=cfg.base_url)
+            new_url, notice = normalize_base_url(entered_url)
+            if notice:
+                ui.print_info(f"[yellow]{notice}[/yellow]")
             cfg.base_url = new_url
             config_mgr.save_global_config(cfg)
             ui.print_success(f"Base URL updated to {new_url}")

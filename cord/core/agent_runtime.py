@@ -92,6 +92,14 @@ class AgentRuntime:
             content = response.get("content") or ""
             tool_calls = response.get("tool_calls") or []
 
+            # Fallback Tool Recovery for models that output XML tool tags
+            if not tool_calls and content:
+                from cord.core.tool_parser import parse_fallback_tool_calls, strip_tool_xml_from_text
+                recovered = parse_fallback_tool_calls(content, self.tool_registry.tools)
+                if recovered:
+                    tool_calls = recovered
+                    content = strip_tool_xml_from_text(content, recovered)
+
             # Append assistant message to history
             assistant_msg: Dict[str, Any] = {"role": "assistant"}
             if content:

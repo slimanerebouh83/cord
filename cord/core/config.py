@@ -187,6 +187,42 @@ DEFAULT_DANGEROUS_COMMANDS = [
 ]
 
 
+def normalize_base_url(url: str) -> tuple[str, Optional[str]]:
+    """
+    Cleans and normalizes an API Base URL.
+    Returns:
+        (clean_url, reason_note)
+
+    Why this is needed:
+    OpenAI-compatible clients (including CORD) automatically append '/chat/completions'
+    (or '/messages' for Anthropic) to the configured Base URL. If a user enters
+    'https://openrouter.ai/api/v1/chat/completions', keeping that suffix would cause
+    requests to hit 'https://openrouter.ai/api/v1/chat/completions/chat/completions',
+    resulting in HTTP 404 (Not Found).
+    This function cleanly removes redundant endpoint paths and produces an informative notice.
+    """
+    raw = (url or "").strip().rstrip("/")
+    if not raw:
+        return raw, None
+
+    # Auto-correct common Google/Gemini URL typos
+    if "googleapis.com" in raw and "generativelanguage" not in raw:
+        return "https://generativelanguage.googleapis.com/v1beta/openai", "Corrected Gemini endpoint to https://generativelanguage.googleapis.com/v1beta/openai"
+
+    note = None
+    if raw.endswith("/chat/completions"):
+        raw = raw[:-17].rstrip("/")
+        note = "Automatically trimmed '/chat/completions' because CORD appends it automatically (avoids duplicate path HTTP 404 errors)."
+    elif raw.endswith("/chat"):
+        raw = raw[:-5].rstrip("/")
+        note = "Automatically trimmed '/chat' because CORD appends '/chat/completions' automatically."
+    elif raw.endswith("/messages"):
+        raw = raw[:-9].rstrip("/")
+        note = "Automatically trimmed '/messages' because CORD appends '/messages' automatically for Anthropic format."
+
+    return raw, note
+
+
 @dataclass
 class CordConfig:
     provider: str = "openrouter"
@@ -269,6 +305,11 @@ class CordConfig:
         if self.provider == "ollama":
             return bool(self.base_url and self.model)
         return bool(self.api_key and self.base_url and self.model)
+
+    def __post_init__(self):
+        if self.base_url:
+            clean, _ = normalize_base_url(self.base_url)
+            self.base_url = clean
 
 
 class ConfigManager:
