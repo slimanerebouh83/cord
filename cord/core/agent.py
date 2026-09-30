@@ -20,6 +20,7 @@ from cord.core.permissions import PermissionGuard
 from cord.core.planner import plan_mgr
 from cord.core.checkpoints import checkpoint_mgr
 from cord.tools.registry import ToolRegistry
+from cord.tools.base import ToolResult
 from cord.subagents.manager import SubagentManager
 from cord.skills.loader import SkillLoader
 from cord.memory.sessions import session_manager
@@ -282,25 +283,71 @@ class CordAgent:
                             thinking_header_printed = False
 
                         delta = chunk.tool_call_delta
-                        idx = delta.index
-                        if idx not in tool_calls_dict:
-                            tool_calls_dict[idx] = {
-                                "id": delta.id or f"call_{idx}",
+                        raw_id = delta.id or ""
+                        raw_idx = delta.index
+
+                        # Determine target index in tool_calls_dict
+                        target_key = None
+                        if raw_id:
+                            for k, entry in tool_calls_dict.items():
+                                if entry.get("id") == raw_id:
+                                    target_key = k
+                                    break
+
+                        if target_key is None:
+                            if raw_id:
+                                target_key = len(tool_calls_dict)
+                            elif raw_idx is not None and raw_idx in tool_calls_dict:
+                                existing_fn = tool_calls_dict[raw_idx]["function"]["name"]
+                                if delta.name and existing_fn and delta.name != existing_fn:
+                                    target_key = len(tool_calls_dict)
+                                else:
+                                    target_key = raw_idx
+                            elif raw_idx is not None:
+                                target_key = raw_idx
+                            else:
+                                target_key = len(tool_calls_dict)
+
+                        if target_key not in tool_calls_dict:
+                            tool_calls_dict[target_key] = {
+                                "id": raw_id or f"call_{target_key}",
                                 "type": "function",
                                 "function": {
-                                    "name": delta.name,
-                                    "arguments": delta.arguments,
+                                    "name": delta.name or "",
+                                    "arguments": delta.arguments or "",
                                 },
                             }
                             if delta.extra_content:
-                                tool_calls_dict[idx]["extra_content"] = delta.extra_content
+                                tool_calls_dict[target_key]["extra_content"] = delta.extra_content
                         else:
+                            entry = tool_calls_dict[target_key]
+                            if raw_id and not entry.get("id"):
+                                entry["id"] = raw_id
                             if delta.name:
-                                tool_calls_dict[idx]["function"]["name"] += delta.name
+                                curr_name = entry["function"]["name"]
+                                if not curr_name:
+                                    entry["function"]["name"] = delta.name
+                                elif curr_name == delta.name:
+                                    pass
+                                elif curr_name in self.tools.tools or curr_name in ("think", "thought", "reasoning"):
+                                    new_k = len(tool_calls_dict)
+                                    tool_calls_dict[new_k] = {
+                                        "id": raw_id or f"call_{new_k}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": delta.name,
+                                            "arguments": delta.arguments or "",
+                                        },
+                                    }
+                                    if delta.extra_content:
+                                        tool_calls_dict[new_k]["extra_content"] = delta.extra_content
+                                    continue
+                                else:
+                                    entry["function"]["name"] += delta.name
                             if delta.arguments:
-                                tool_calls_dict[idx]["function"]["arguments"] += delta.arguments
+                                entry["function"]["arguments"] += delta.arguments
                             if delta.extra_content:
-                                tool_calls_dict[idx]["extra_content"] = delta.extra_content
+                                entry["extra_content"] = delta.extra_content
 
                 # Ensure animation is stopped
                 if anim._running:
@@ -425,6 +472,18 @@ class CordAgent:
                     t_args = json.loads(raw_args) if raw_args else {}
                 except json.JSONDecodeError:
                     t_args = {}
+
+                # Intercept pseudo-reasoning tools (think, thought, reasoning)
+                if t_name in ("think", "thought", "reasoning", "internal_thought"):
+                    thought_val = t_args.get("thought") or t_args.get("text") or t_args.get("reasoning") or ""
+                    if thought_val and self.config.show_thinking:
+                        renderer.render_thinking_block(str(thought_val))
+                    tool_res = ToolResult(
+                        success=True,
+                        output="Thought acknowledged. Please proceed directly with user response or real tool calls.",
+                        metadata={"thought": str(thought_val)},
+                    )
+                    return tc_item, t_args, tool_res, 0.001, "thought"
 
                 # Automatic Snapshot before modifying files
                 if t_name in ("write_file", "edit_file") and "path" in t_args:

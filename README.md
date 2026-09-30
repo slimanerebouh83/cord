@@ -217,10 +217,30 @@ pytest -v
 ```
 
 ```
-============================ 173 passed in 33.00s =============================
+============================ 181 passed in 30.82s =============================
 ```
 
-All **173 tests** pass consistently!
+All **181 tests** pass consistently!
+
+---
+
+## 📢 Latest Announcements & Release Notes (أحدث الإعلانات وإصلاحات الأخطاء - v0.2.1)
+
+### 🛠️ Critical Bug Fixes (إصلاحات هامة):
+1. **Tool Stream Concatenation Collision (إصلاح خطأ دمج أسماء الأدوات):**
+   - **Problem Fixed**: When a model emitted multiple tool calls (or pseudo-reasoning chunks) sharing index `0`, the streaming accumulator concatenated function names together, producing invalid synthetic tools like `'thinkwrite_file'`, resulting in `Unknown tool` errors followed by provider API failures.
+   - **Solution**: Implemented unique tool call tracking by `id` and distinct function names across `llm.py`, `agent.py`, `base_subagent.py`, and `ai_manager.py`. Multi-tool calls are now cleanly partitioned into separate execution units.
+
+2. **Google Gemini API Error 400 & `thought_signature` Compliance:**
+   - **Problem Fixed**: Gemini OpenAI-compatible endpoints enforce strict `thought_signature` checks in function call turns. Missing signatures triggered `API Error 400: Function call is missing a thought_signature`.
+   - **Solution**: Guaranteed `thought_signature` injection and propagation across both primary and subagent loops. Cleaned default tool schemas so that reasoning is handled natively through `<thought>` blocks rather than confusing callable API tools.
+
+3. **Windows `python3` Command Aliasing:**
+   - **Problem Fixed**: On Windows machines without python3 developer aliases configured, running commands like `python3 script.py` invoked the Windows Store redirector or failed.
+   - **Solution**: Added auto-aliasing in `execute_command` and `run_shell` to route `python3` invocations directly to the active running Python executable (`sys.executable`).
+
+4. **Background GUI App Launching:**
+   - Automatic detection of background GUI commands (`&`), launching external GUI tools (like calculators or test windows) without freezing the CLI conversation loop.
 
 ---
 

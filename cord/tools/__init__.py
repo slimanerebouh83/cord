@@ -213,7 +213,6 @@ def get_default_tools() -> List[BaseTool]:
         AskUserTool(),
         CreatePlanTool(),
         UpdatePlanStepTool(),
-        ThinkTool(),
         # Fleet & SSH
         FleetNodesTool(),
         FleetExecTool(),

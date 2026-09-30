@@ -180,18 +180,64 @@ class Subagent:
                             thinking_header_printed = False
 
                         delta = chunk.tool_call_delta
-                        idx = delta.index
-                        if idx not in tool_calls_dict:
-                            tool_calls_dict[idx] = {
-                                "id": delta.id or f"sub_call_{idx}",
+                        raw_id = delta.id or ""
+                        raw_idx = delta.index
+
+                        target_key = None
+                        if raw_id:
+                            for k, entry in tool_calls_dict.items():
+                                if entry.get("id") == raw_id:
+                                    target_key = k
+                                    break
+
+                        if target_key is None:
+                            if raw_id:
+                                target_key = len(tool_calls_dict)
+                            elif raw_idx is not None and raw_idx in tool_calls_dict:
+                                existing_fn = tool_calls_dict[raw_idx]["function"]["name"]
+                                if delta.name and existing_fn and delta.name != existing_fn:
+                                    target_key = len(tool_calls_dict)
+                                else:
+                                    target_key = raw_idx
+                            elif raw_idx is not None:
+                                target_key = raw_idx
+                            else:
+                                target_key = len(tool_calls_dict)
+
+                        if target_key not in tool_calls_dict:
+                            tool_calls_dict[target_key] = {
+                                "id": raw_id or f"sub_call_{target_key}",
                                 "type": "function",
                                 "function": {"name": delta.name or "", "arguments": delta.arguments or ""},
                             }
+                            if delta.extra_content:
+                                tool_calls_dict[target_key]["extra_content"] = delta.extra_content
                         else:
+                            entry = tool_calls_dict[target_key]
+                            if raw_id and not entry.get("id"):
+                                entry["id"] = raw_id
                             if delta.name:
-                                tool_calls_dict[idx]["function"]["name"] += delta.name
+                                curr_name = entry["function"]["name"]
+                                if not curr_name:
+                                    entry["function"]["name"] = delta.name
+                                elif curr_name == delta.name:
+                                    pass
+                                elif curr_name in self.tools or curr_name in ("think", "thought", "reasoning"):
+                                    new_k = len(tool_calls_dict)
+                                    tool_calls_dict[new_k] = {
+                                        "id": raw_id or f"sub_call_{new_k}",
+                                        "type": "function",
+                                        "function": {"name": delta.name, "arguments": delta.arguments or ""},
+                                    }
+                                    if delta.extra_content:
+                                        tool_calls_dict[new_k]["extra_content"] = delta.extra_content
+                                    continue
+                                else:
+                                    entry["function"]["name"] += delta.name
                             if delta.arguments:
-                                tool_calls_dict[idx]["function"]["arguments"] += delta.arguments
+                                entry["function"]["arguments"] += delta.arguments
+                            if delta.extra_content:
+                                entry["extra_content"] = delta.extra_content
 
                 if anim._running:
                     await anim.stop()
@@ -251,10 +297,20 @@ class Subagent:
             formatted_calls = list(tool_calls_dict.values())
             if not formatted_calls and assistant_text:
                 from cord.core.tool_parser import parse_fallback_tool_calls, strip_tool_xml_from_text
-                recovered = parse_fallback_tool_calls(assistant_text, self.tools.tools)
+                recovered = parse_fallback_tool_calls(assistant_text, self.tools)
                 if recovered:
                     formatted_calls = recovered
                     assistant_text = strip_tool_xml_from_text(assistant_text, recovered)
+
+            # For Gemini / Google endpoints, guarantee thought_signature is present to prevent API Error 400
+            for tc in formatted_calls:
+                if "gemini" in self.config.model.lower() or "google" in getattr(self.config, "base_url", "").lower():
+                    if "extra_content" not in tc or not tc.get("extra_content"):
+                        tc["extra_content"] = {
+                            "google": {
+                                "thought_signature": "skip_thought_signature_validator"
+                            }
+                        }
 
             # Build message entry
             msg_obj: Dict[str, Any] = {"role": "assistant", "content": assistant_text or ""}

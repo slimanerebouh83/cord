@@ -45,7 +45,12 @@ class RunShellTool(BaseTool):
         is_win = sys.platform == "win32"
         # On Windows, use powershell -Command
         if is_win:
-            shell_cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+            clean_cmd = command.strip()
+            if clean_cmd.startswith("python3 "):
+                clean_cmd = f'"{sys.executable}" ' + clean_cmd[8:]
+            elif clean_cmd == "python3":
+                clean_cmd = f'"{sys.executable}"'
+            shell_cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", clean_cmd]
         else:
             shell_cmd = ["/bin/bash", "-c", command]
 

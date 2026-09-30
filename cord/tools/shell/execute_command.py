@@ -56,6 +56,10 @@ class ExecuteCommandTool(BaseTool):
 
             is_win = sys.platform == "win32"
             if is_win:
+                if clean_cmd.startswith("python3 "):
+                    clean_cmd = f'"{sys.executable}" ' + clean_cmd[8:]
+                elif clean_cmd == "python3":
+                    clean_cmd = f'"{sys.executable}"'
                 cmd_parts = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", clean_cmd]
             else:
                 cmd_parts = ["/bin/bash", "-c", clean_cmd]

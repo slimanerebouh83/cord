@@ -354,18 +354,58 @@ class AIManager:
                 thinking_acc += chunk.thinking
             if chunk.tool_call_delta:
                 d = chunk.tool_call_delta
-                idx = d.index
-                if idx not in tool_calls_dict:
-                    tool_calls_dict[idx] = {
-                        "id": d.id or f"call_{idx}",
+                raw_id = d.id or ""
+                raw_idx = d.index
+
+                target_key = None
+                if raw_id:
+                    for k, entry in tool_calls_dict.items():
+                        if entry.get("id") == raw_id:
+                            target_key = k
+                            break
+
+                if target_key is None:
+                    if raw_id:
+                        target_key = len(tool_calls_dict)
+                    elif raw_idx is not None and raw_idx in tool_calls_dict:
+                        existing_fn = tool_calls_dict[raw_idx]["function"]["name"]
+                        if d.name and existing_fn and d.name != existing_fn:
+                            target_key = len(tool_calls_dict)
+                        else:
+                            target_key = raw_idx
+                    elif raw_idx is not None:
+                        target_key = raw_idx
+                    else:
+                        target_key = len(tool_calls_dict)
+
+                if target_key not in tool_calls_dict:
+                    tool_calls_dict[target_key] = {
+                        "id": raw_id or f"call_{target_key}",
                         "type": "function",
-                        "function": {"name": d.name, "arguments": d.arguments}
+                        "function": {"name": d.name or "", "arguments": d.arguments or ""},
                     }
                 else:
+                    entry = tool_calls_dict[target_key]
+                    if raw_id and not entry.get("id"):
+                        entry["id"] = raw_id
                     if d.name:
-                        tool_calls_dict[idx]["function"]["name"] += d.name
+                        curr_name = entry["function"]["name"]
+                        if not curr_name:
+                            entry["function"]["name"] = d.name
+                        elif curr_name == d.name:
+                            pass
+                        elif curr_name in ("think", "thought", "reasoning") or (len(curr_name) > 3 and not d.name.startswith(curr_name)):
+                            new_k = len(tool_calls_dict)
+                            tool_calls_dict[new_k] = {
+                                "id": raw_id or f"call_{new_k}",
+                                "type": "function",
+                                "function": {"name": d.name, "arguments": d.arguments or ""},
+                            }
+                            continue
+                        else:
+                            entry["function"]["name"] += d.name
                     if d.arguments:
-                        tool_calls_dict[idx]["function"]["arguments"] += d.arguments
+                        entry["function"]["arguments"] += d.arguments
 
         tool_calls = list(tool_calls_dict.values())
         return {

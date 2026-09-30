@@ -292,6 +292,7 @@ class LLMClient:
         for attempt in range(max_retries + 1):
             yielded_any = False
             thought_filter = ThoughtStreamFilter()
+            tool_id_to_idx: Dict[str, int] = {}
             try:
                 async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
                     async with client.stream("POST", url, headers=headers, json=payload) as response:
@@ -384,12 +385,26 @@ class LLMClient:
                                 tool_calls = delta.get("tool_calls")
                                 if tool_calls:
                                     for tc in tool_calls:
-                                        idx = tc.get("index", 0)
-                                        call_id = tc.get("id", "")
+                                        raw_idx = tc.get("index")
+                                        call_id = tc.get("id", "") or ""
                                         fn = tc.get("function", {})
                                         name = fn.get("name", "")
                                         args = fn.get("arguments", "")
                                         extra_cnt = tc.get("extra_content")
+
+                                        # Map call_id to a stable unique index across chunks
+                                        if call_id:
+                                            if call_id not in tool_id_to_idx:
+                                                if raw_idx is not None and raw_idx not in tool_id_to_idx.values():
+                                                    tool_id_to_idx[call_id] = raw_idx
+                                                else:
+                                                    tool_id_to_idx[call_id] = len(tool_id_to_idx)
+                                            idx = tool_id_to_idx[call_id]
+                                        elif raw_idx is not None:
+                                            idx = raw_idx
+                                        else:
+                                            idx = 0
+
                                         yield StreamChunk(
                                             tool_call_delta=ToolCallDelta(
                                                 index=idx,
