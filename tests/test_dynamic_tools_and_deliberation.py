@@ -10,6 +10,7 @@ from cord.tools.dynamic_tool import (
     CreateDynamicTool,
     ListDynamicTools,
     DeleteDynamicTool,
+    RepairDynamicTool,
 )
 from cord.subagents.deliberation import swarm_deliberation
 from cord.tools.system.deliberation_tools import (
@@ -143,3 +144,72 @@ async def test_swarm_scaling_and_peer_roster():
     assert res.success is True
     assert "Swarm Peer Roster" in res.output
     assert "1,000,000" in res.output
+
+
+@pytest.mark.asyncio
+async def test_repair_and_self_heal_dynamic_tool(tmp_path, monkeypatch):
+    """Verifies that agents can inspect broken tools, apply surgical self-repair patches, and verify them with tests."""
+    fake_storage = tmp_path / "dynamic_tools"
+    fake_storage.mkdir()
+    monkeypatch.setattr(dynamic_tool_manager, "storage_dir", fake_storage)
+    dynamic_tool_manager.tools.clear()
+    dynamic_tool_manager.tool_errors.clear()
+
+    # 1. Create a buggy dynamic tool
+    create_tool = CreateDynamicTool()
+    buggy_code = """
+def run(val: int):
+    # Bug: raises ZeroDivisionError on 0 and wrong logic
+    if val == 0:
+        raise ZeroDivisionError("Cannot divide by zero")
+    return {"result": 100 // val}
+"""
+    await create_tool.execute(
+        name="divider_tool",
+        description="Divides 100 by val safely",
+        parameters={
+            "type": "object",
+            "properties": {"val": {"type": "integer"}},
+            "required": ["val"],
+        },
+        python_code=buggy_code,
+    )
+
+    tool = dynamic_tool_manager.get_tool("divider_tool")
+    assert tool is not None
+
+    # 2. Trigger error and check error recording
+    err_res = await tool.execute(val=0)
+    assert err_res.success is False
+    assert "ZeroDivisionError" in err_res.error
+    assert "repair_dynamic_tool" in err_res.error
+    assert dynamic_tool_manager.get_tool_error("divider_tool") is not None
+
+    # 3. Repair the dynamic tool using RepairDynamicTool
+    repair_tool = RepairDynamicTool()
+    fixed_code = """
+def run(val: int):
+    if val == 0:
+        return {"result": 0, "note": "Safe division by zero avoided"}
+    return {"result": 100 // val}
+"""
+    rep_res = await repair_tool.execute(
+        name="divider_tool",
+        python_code=fixed_code,
+        repair_instructions="Add zero division guard clause",
+        test_args={"val": 0},
+    )
+    assert rep_res.success is True
+    assert "successfully repaired, recompiled" in rep_res.output.lower()
+    assert "verification test passed" in rep_res.output.lower()
+
+    # 4. Verify fixed tool works on both 0 and non-zero inputs
+    fixed_tool = dynamic_tool_manager.get_tool("divider_tool")
+    r0 = await fixed_tool.execute(val=0)
+    assert r0.success is True
+    assert '"result": 0' in r0.output
+
+    r4 = await fixed_tool.execute(val=4)
+    assert r4.success is True
+    assert '"result": 25' in r4.output
+

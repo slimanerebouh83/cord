@@ -74,7 +74,7 @@ ROLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "allowed_tools": [
             "read_file", "write_file", "edit_file", "list_directory", "list_dir", "search_files", "find_files", "grep_search",
             "execute_command", "run_shell", "run_tests", "git_status", "git_diff",
-            "create_dynamic_tool", "list_dynamic_tools", "create_skill", "list_skills", "subagent_share_skill",
+            "create_dynamic_tool", "repair_dynamic_tool", "list_dynamic_tools", "delete_dynamic_tool", "create_skill", "list_skills", "subagent_share_skill",
         ] + SWARM_BASE_TOOLS,
     },
     "reviewer": {

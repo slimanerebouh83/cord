@@ -255,6 +255,25 @@ class ChatRenderer:
             ui.console.print(card)
             return
 
+        # 8. Dynamic Tool Creation & Self-Repair Factory
+        if any(k in t_lower for k in ("create_dynamic_tool", "repair_dynamic_tool")):
+            target_tool = str(args.get("name") or "dynamic_tool")
+            is_repair = "repair" in t_lower
+            action_type = "SELF-REPAIR & PATCH" if is_repair else "DYNAMIC SYNTHESIS"
+            b_color = "#10b981" if success else "#ef4444"
+            desc = str(args.get("description") or args.get("repair_instructions") or "")
+            if len(desc) > 70:
+                desc = desc[:67] + "..."
+            card = (
+                f" [bold {b_color}]╭─ [bold #ec4899]🧬 SELF-EVOLVING TOOL FACTORY[/bold #ec4899] [dim]•[/dim] [bold white]{action_type}[/bold white] [bright_cyan]'{target_tool}'[/bright_cyan] "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [dim]Purpose:[/dim] [white]{desc}[/white]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [dim]Engine:[/dim] [magenta]Dynamic AST Compilation[/magenta] │ [cyan]Live Verification[/cyan] │ [green]Swarm Registry Hot-Load[/green]\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
+            return
+
         # General Fallback Card
         primary_arg = ""
         for k in ("path", "query", "action", "name", "text", "key", "url"):

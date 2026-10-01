@@ -66,7 +66,7 @@ class CollaborativePlanTool(BaseTool):
     async def execute(
         self,
         goal: str,
-        phases: Optional[List[Dict[str, Any]]] = None,
+        phases: Optional[Any] = None,
         enable_deliberation: bool = True,
         max_concurrency: int = 4,
         **kwargs,

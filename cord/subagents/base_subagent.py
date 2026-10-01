@@ -121,12 +121,14 @@ class Subagent:
             f"[dim]Task: {task}[/dim]\n"
         )
 
+        ws_dir = getattr(self.config, "workspace_dir", None) or os.getcwd()
+        ws_context = f"\n\n[Active Project Workspace]: {ws_dir}\nOperate inside this workspace directory for all file operations and tools."
         if not self.messages:
             self.messages = [
-                {"role": "user", "content": f"Task for {self.role.upper()} ({self.name}):\n{task}"}
+                {"role": "user", "content": f"Task for {self.role.upper()} ({self.name}):\n{task}{ws_context}"}
             ]
         else:
-            self.messages.append({"role": "user", "content": task})
+            self.messages.append({"role": "user", "content": f"{task}{ws_context}"})
 
         # Use canonical unique tool schemas for LLM declaration
         unique_tools = {t.name: t for t in self.tools.values()}
@@ -380,18 +382,33 @@ class Subagent:
                         else:
                             res_str = str(res)
                     except Exception as ex:
+                        res = ToolResult(success=False, output="", error=f"Error executing tool: {ex}")
                         res_str = f"Error executing tool: {ex}"
 
                 elapsed_sub = time.time() - t_sub_start
-                ui.print_tool_result(f"[{self.name}] {t_name}", success="Error" not in res_str, snippet=res_str[:160])
-                try:
-                    from cord.tools.base import ToolResult
-                    from cord.ui.renderer import renderer
+
+                # Determine true success status accurately from ToolResult or explicit prefix
+                if isinstance(res, ToolResult):
+                    is_success = res.success
+                    tool_res_obj = res
+                elif isinstance(res, dict):
+                    is_success = res.get("success", True)
                     tool_res_obj = ToolResult(
-                        success="Error" not in res_str,
-                        output=res_str if "Error" not in res_str else "",
-                        error=res_str if "Error" in res_str else None,
+                        success=is_success,
+                        output=res_str if is_success else "",
+                        error=res.get("error") if not is_success else None,
                     )
+                else:
+                    is_success = not (res_str.startswith("Error:") or res_str.startswith("ERROR:") or res_str.startswith("Error executing tool:"))
+                    tool_res_obj = ToolResult(
+                        success=is_success,
+                        output=res_str if is_success else "",
+                        error=res_str if not is_success else None,
+                    )
+
+                ui.print_tool_result(f"[{self.name}] {t_name}", success=is_success, snippet=res_str[:160])
+                try:
+                    from cord.ui.renderer import renderer
                     renderer.render_tool_execution(f"[{self.name}] {t_name}", t_args, tool_res_obj, elapsed_sub)
                 except Exception:
                     pass
@@ -400,7 +417,7 @@ class Subagent:
                     "tool": t_name,
                     "args": t_args,
                     "result": res_str,
-                    "success": "Error" not in res_str,
+                    "success": is_success,
                     "timestamp": time.time(),
                 })
 

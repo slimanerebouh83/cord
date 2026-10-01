@@ -200,17 +200,26 @@ class CordConsole:
         self.console.print(f" [error][x][/error] {display}")
 
     def print_tool_start(self, tool_name: str, args_summary: str) -> None:
-        self.console.print(f"\n[tool]>> Tool Call:[/tool] [bold white]{tool_name}[/bold white] [dim]({args_summary})[/dim]")
+        clean_args = args_summary.strip()
+        if len(clean_args) > 100:
+            clean_args = clean_args[:97] + "..."
+        border = "#38bdf8"
+        self.console.print(f"\n [bold {border}]╭─ 🛠️  TOOL DISPATCH: [bold white]{tool_name}[/bold white][/bold {border}]")
+        if clean_args:
+            self.console.print(f" [bold {border}]│[/bold {border}]  [dim]Input:[/dim] [cyan]{clean_args}[/cyan]")
 
     def print_tool_result(self, tool_name: str, success: bool = True, snippet: str = "") -> None:
-        mark = "[success][v][/success]" if success else "[error][x][/error]"
-        self.console.print(f"{mark} [dim]{tool_name} returned:[/dim]")
+        status_tag = "[bold green]✓ SUCCESS[/bold green]" if success else "[bold red]✖ FAILED[/bold red]"
+        b_color = "#10b981" if success else "#ef4444"
+        self.console.print(f" [bold {b_color}]│[/bold {b_color}]  [dim]Status:[/dim] {status_tag}")
         if snippet:
-            lines = snippet.strip().split("\n")[:12]
-            for line in lines:
-                self.console.print(f"  [dim]|[/dim] {line}")
-            if len(lines) < len(snippet.strip().split("\n")):
-                self.console.print(f"  [dim]| ... ({len(snippet.strip().splitlines()) - 12} more lines)[/dim]")
+            lines = [l for l in snippet.strip().splitlines() if l.strip()]
+            for line in lines[:6]:
+                clean_l = line if len(line) <= 120 else (line[:117] + "...")
+                self.console.print(f" [bold {b_color}]│[/bold {b_color}]  [dim white]{clean_l}[/dim white]")
+            if len(lines) > 6:
+                self.console.print(f" [bold {b_color}]│[/bold {b_color}]  [dim]... (+{len(lines) - 6} more lines)[/dim]")
+        self.console.print(f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]")
 
     def print_diff(self, filename: str, diff_text: str) -> None:
         syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=True)

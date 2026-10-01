@@ -51,9 +51,10 @@ from cord.tools.system.deliberation_tools import (
     SubagentConsensusTool,
 )
 
-# Dynamic Runtime Tool Synthesis
+# Dynamic Runtime Tool Synthesis & Self-Repair
 from cord.tools.dynamic_tool import (
     CreateDynamicTool,
+    RepairDynamicTool,
     ListDynamicTools,
     DeleteDynamicTool,
 )
@@ -169,8 +170,9 @@ def get_default_tools() -> List[BaseTool]:
         SubagentProposeTool(),
         SubagentVoteTool(),
         SubagentConsensusTool(),
-        # Dynamic Tool Synthesis
+        # Dynamic Tool Synthesis & Self-Repair
         CreateDynamicTool(),
+        RepairDynamicTool(),
         ListDynamicTools(),
         DeleteDynamicTool(),
         # Git

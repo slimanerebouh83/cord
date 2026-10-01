@@ -53,9 +53,11 @@ class DynamicTool(BaseTool):
                 return res
             if isinstance(res, dict):
                 return ToolResult(success=True, output=json.dumps(res, indent=2, ensure_ascii=False))
-            return ToolResult(success=True, output=str(res))
         except Exception as e:
-            return ToolResult(success=False, output="", error=f"Dynamic tool '{self.name}' error: {e}")
+            err_msg = f"Dynamic tool '{self.name}' error ({type(e).__name__}): {e}"
+            dynamic_tool_manager.record_tool_error(self.name, f"{type(e).__name__}: {e}")
+            tip = f"\n💡 Tip: You can fix this tool anytime using `repair_dynamic_tool(name='{self.name}', python_code='...')`"
+            return ToolResult(success=False, output="", error=err_msg + tip)
 
 
 class DynamicToolManager:
@@ -64,6 +66,7 @@ class DynamicToolManager:
     def __init__(self, storage_dir: Optional[Path] = None):
         self.storage_dir = storage_dir or (Path.home() / ".cord" / "dynamic_tools")
         self.tools: Dict[str, DynamicTool] = {}
+        self.tool_errors: Dict[str, str] = {}
         self._load_persisted_tools()
 
     def _load_persisted_tools(self) -> None:
@@ -165,7 +168,69 @@ class DynamicToolManager:
             except Exception:
                 pass
 
+        # 5. Live dispatch to registries if bound
+        if hasattr(self, "_tool_registry") and self._tool_registry:
+            try:
+                self._tool_registry.register(tool)
+            except Exception:
+                pass
+        if hasattr(self, "_subagent_manager") and self._subagent_manager:
+            try:
+                self._subagent_manager.available_tools[tool.name] = tool
+            except Exception:
+                pass
+
         return tool
+
+    def record_tool_error(self, name: str, error: str) -> None:
+        self.tool_errors[name.lower().strip()] = error
+
+    def get_tool_error(self, name: str) -> Optional[str]:
+        return self.tool_errors.get(name.lower().strip())
+
+    def get_tool(self, name: str) -> Optional[DynamicTool]:
+        return self.tools.get(name.lower().strip())
+
+    def bind_registries(self, tool_registry: Any = None, subagent_manager: Any = None) -> None:
+        if tool_registry:
+            self._tool_registry = tool_registry
+        if subagent_manager:
+            self._subagent_manager = subagent_manager
+
+    async def repair_and_register(
+        self,
+        name: str,
+        python_code: str,
+        description: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        test_args: Optional[Dict[str, Any]] = None,
+    ) -> tuple[DynamicTool, Optional[str]]:
+        """Repairs and re-compiles an existing dynamic tool, optionally running verification tests."""
+        clean_name = name.strip().lower().replace(" ", "_").replace("-", "_")
+        existing = self.tools.get(clean_name)
+        effective_desc = description or (existing.description if existing else f"Repaired dynamic tool {clean_name}")
+        effective_params = parameters or (existing.parameters if existing else {"type": "object", "properties": {}, "required": []})
+        author = existing.author if existing else "agent-repair"
+
+        tool = self.compile_and_register(
+            name=clean_name,
+            description=effective_desc,
+            parameters=effective_params,
+            python_code=python_code,
+            author=author,
+            persist=True,
+        )
+
+        self.tool_errors.pop(clean_name, None)
+
+        test_result_output = None
+        if test_args is not None:
+            res = await tool.execute(**test_args)
+            if not res.success:
+                raise RuntimeError(f"Verification test with arguments {test_args} failed: {res.error}")
+            test_result_output = res.output or "Success"
+
+        return tool, test_result_output
 
     def delete_tool(self, name: str) -> bool:
         clean_name = name.strip().lower()
@@ -186,6 +251,7 @@ class DynamicToolManager:
                 "description": t.description,
                 "author": t.author,
                 "parameters": t.parameters,
+                "last_error": self.tool_errors.get(t.name),
             }
             for t in self.tools.values()
         ]
@@ -302,3 +368,68 @@ class DeleteDynamicTool(BaseTool):
         if success:
             return ToolResult(success=True, output=f"Dynamic tool '{name}' successfully deleted.")
         return ToolResult(success=False, output="", error=f"Dynamic tool '{name}' not found.")
+
+
+class RepairDynamicTool(BaseTool):
+    name = "repair_dynamic_tool"
+    description = (
+        "Inspect, fix, and re-compile an existing dynamic tool that encountered an error or needs enhancement. "
+        "Replaces the tool's implementation live, verifies it with optional test arguments, and updates disk persistence."
+    )
+    required_permission = PermissionLevel.MODIFY
+    risk_level = RiskLevel.HIGH
+    parameters = {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the dynamic tool to repair",
+            },
+            "python_code": {
+                "type": "string",
+                "description": "The corrected and updated Python code for the tool entrypoint.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Optional updated explanation of what the tool does.",
+            },
+            "parameters": {
+                "type": "object",
+                "description": "Optional updated JSON schema for tool parameters.",
+            },
+            "test_args": {
+                "type": "object",
+                "description": "Optional test inputs to execute immediately to verify the repair succeeded.",
+            },
+        },
+        "required": ["name", "python_code"],
+    }
+
+    async def execute(
+        self,
+        name: str,
+        python_code: str,
+        description: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        test_args: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> ToolResult:
+        try:
+            tool, test_output = await dynamic_tool_manager.repair_and_register(
+                name=name,
+                python_code=python_code,
+                description=description,
+                parameters=parameters,
+                test_args=test_args,
+            )
+            test_msg = f"\n🧪 Verification Test Passed: {test_output}" if test_output else ""
+            return ToolResult(
+                success=True,
+                output=(
+                    f"✔ Dynamic Tool '{tool.name}' successfully repaired, recompiled, and verified!{test_msg}\n"
+                    f"The updated tool is immediately active and available to all agents."
+                ),
+            )
+        except Exception as e:
+            return ToolResult(success=False, output="", error=f"Failed to repair dynamic tool '{name}': {e}")
+

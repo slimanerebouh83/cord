@@ -9,6 +9,9 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+import json
+import ast
+import re
 from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
 from rich.table import Table
@@ -92,10 +95,90 @@ class CollaborativePlanner:
 
         return [p1, p2, p3, p4, p5]
 
+    def _parse_input_phases(self, phases: Any, goal: str) -> List[CollaborativePhase]:
+        """Safely parses input phases from any format (dict list, raw JSON string, partial list, or stubs)."""
+        if not phases:
+            return self.synthesize_plan(goal)
+
+        raw_list = []
+        if isinstance(phases, str):
+            phases_str = phases.strip()
+            # Try standard JSON parsing
+            try:
+                parsed = json.loads(phases_str)
+                if isinstance(parsed, list):
+                    raw_list = parsed
+                elif isinstance(parsed, dict):
+                    raw_list = [parsed]
+            except Exception:
+                # Try ast literal eval
+                try:
+                    parsed = ast.literal_eval(phases_str)
+                    if isinstance(parsed, list):
+                        raw_list = parsed
+                    elif isinstance(parsed, dict):
+                        raw_list = [parsed]
+                except Exception:
+                    # Regex extraction of JSON-like object blocks
+                    dict_blocks = re.findall(r"\{[^{}]*\}", phases_str)
+                    for block in dict_blocks:
+                        try:
+                            fixed = re.sub(r'(\w+)\s*:', r'"\1":', block)
+                            b_data = json.loads(fixed)
+                            if isinstance(b_data, dict):
+                                raw_list.append(b_data)
+                        except Exception:
+                            pass
+        elif isinstance(phases, list):
+            raw_list = phases
+        elif isinstance(phases, dict):
+            raw_list = [phases]
+
+        if not raw_list:
+            return self.synthesize_plan(goal)
+
+        parsed_phases: List[CollaborativePhase] = []
+        for i, item in enumerate(raw_list):
+            item_dict: Dict[str, Any] = {}
+            if isinstance(item, str):
+                try:
+                    item_dict = json.loads(item)
+                except Exception:
+                    try:
+                        item_dict = ast.literal_eval(item)
+                    except Exception:
+                        item_dict = {"title": item[:40], "task": item, "role": "coder"}
+            elif isinstance(item, dict):
+                item_dict = item
+            else:
+                continue
+
+            pid = item_dict.get("id") or f"phase_{i+1}"
+            role = str(item_dict.get("role", "coder")).lower()
+            if role not in ("researcher", "coder", "reviewer", "tester", "model_scout"):
+                role = "coder"
+            title = str(item_dict.get("title") or f"Phase {i+1}: {role.capitalize()}")
+            task = str(item_dict.get("task") or item_dict.get("prompt") or title)
+            deps = item_dict.get("depends_on", [])
+            if not isinstance(deps, list):
+                deps = [str(deps)] if deps else []
+
+            parsed_phases.append(CollaborativePhase(
+                phase_id=str(pid),
+                title=title,
+                role=role,
+                task=task,
+                depends_on=[str(d) for d in deps],
+                deliberation_topic=item_dict.get("deliberation_topic"),
+                deliberation_options=item_dict.get("deliberation_options"),
+            ))
+
+        return parsed_phases if parsed_phases else self.synthesize_plan(goal)
+
     async def execute_plan(
         self,
         goal: str,
-        phases: Optional[List[Dict[str, Any]]] = None,
+        phases: Optional[Any] = None,
         enable_deliberation: bool = True,
         max_concurrency: int = 4,
     ) -> Dict[str, Any]:
@@ -115,28 +198,41 @@ class CollaborativePlanner:
             expand=False,
         ))
 
-        # Build plan phases
-        active_phases: List[CollaborativePhase] = []
-        if phases:
-            for i, p_data in enumerate(phases):
-                pid = p_data.get("id") or f"phase_{i+1}"
-                active_phases.append(CollaborativePhase(
-                    phase_id=pid,
-                    title=p_data.get("title", f"Phase {i+1}"),
-                    role=p_data.get("role", "coder"),
-                    task=p_data.get("task") or p_data.get("prompt", ""),
-                    depends_on=p_data.get("depends_on", []),
-                    deliberation_topic=p_data.get("deliberation_topic"),
-                    deliberation_options=p_data.get("deliberation_options"),
-                ))
-        else:
-            active_phases = self.synthesize_plan(goal)
+        # Build plan phases safely regardless of input structure
+        active_phases = self._parse_input_phases(phases, goal)
 
         # Sync with global plan manager for user visibility
         plan_mgr.create_plan(
             goal=f"Collaborative Swarm: {goal}",
             step_titles=[f"[{p.role.upper()}] {p.title}" for p in active_phases],
         )
+
+        # Render Blueprint Matrix so user immediately sees what each subagent is doing!
+        plan_table = Table(
+            title=f"📋 Swarm Execution Blueprint & Agent Role Assignments",
+            show_header=True,
+            header_style="bold #38bdf8",
+            border_style="#6366f1",
+            expand=False,
+        )
+        plan_table.add_column("Phase #", style="bold white", width=10, justify="center")
+        plan_table.add_column("Phase Title", style="bold cyan", width=28)
+        plan_table.add_column("Assigned Role", style="magenta", width=14, justify="center")
+        plan_table.add_column("Dependencies", style="yellow", width=20)
+        plan_table.add_column("Planned Objective", style="dim white")
+
+        for idx, p in enumerate(active_phases, 1):
+            deps_str = ", ".join(p.depends_on) if p.depends_on else "[green]Ready (Root)[/green]"
+            plan_table.add_row(
+                f"Step {idx}",
+                p.title,
+                p.role.upper(),
+                deps_str,
+                (p.task[:80] + "...") if len(p.task) > 80 else p.task,
+            )
+        ui.console.print("\n")
+        ui.console.print(plan_table)
+        ui.console.print("\n")
 
         completed_phases: Dict[str, CollaborativePhase] = {}
         sem = asyncio.Semaphore(max_concurrency)
@@ -189,11 +285,18 @@ class CollaborativePlanner:
                     phase.consensus = tally.get("winning_choice")
                     full_task += f"\n\n### SWARM CONSENSUS DIRECTIVE:\nPeers voted with {tally.get('majority_percentage')}% consensus to adopt: '{phase.consensus}'. You MUST implement according to this consensus decision."
 
-                ui.console.print(
-                    f"\n[bold #38bdf8]▶ Launching Distributed Phase:[/bold #38bdf8] [bold white]{phase.title}[/bold white]\n"
-                    f"[dim]Assigned Role:[/dim] [magenta]{phase.role.upper()}[/magenta] ({agent_id}) │ "
-                    f"[dim]Consensus Choice:[/dim] [yellow]{phase.consensus or 'Direct Execution'}[/yellow]"
-                )
+                phase_idx = [p.phase_id for p in active_phases].index(phase.phase_id) + 1
+                total_p = len(active_phases)
+
+                ui.console.print(Panel(
+                    f"[bold white]{phase.title}[/bold white]\n"
+                    f"[dim]Assigned Agent:[/dim] [magenta bold]{phase.role.upper()}[/magenta bold] ([cyan]{agent_id}[/cyan]) │ "
+                    f"[dim]Consensus Choice:[/dim] [yellow]{phase.consensus or 'Direct Execution'}[/yellow]\n"
+                    f"[dim]Task Target:[/dim] {(phase.task[:180] + '...') if len(phase.task) > 180 else phase.task}",
+                    title=f"[bold #38bdf8]🚀 Phase {phase_idx}/{total_p} Started[/bold #38bdf8]",
+                    border_style="#38bdf8",
+                    expand=False,
+                ))
 
                 # Spawn subagent for this phase
                 res = await self.manager.spawn(
@@ -204,6 +307,19 @@ class CollaborativePlanner:
 
                 phase.result = res
                 phase.status = "completed" if res.success else "failed"
+
+                phase_status_style = "bold green" if res.success else "bold red"
+                phase_status_icon = "✅ SUCCESS" if res.success else "❌ FAILED"
+                summary_preview = (res.summary[:240] + "...") if len(res.summary) > 240 else res.summary
+                ui.console.print(Panel(
+                    f"[{phase_status_style}]{phase_status_icon}[/{phase_status_style}] │ "
+                    f"[dim]Tools Used:[/dim] [cyan]{res.tool_calls_count}[/cyan] │ "
+                    f"[dim]Model:[/dim] [cyan]{res.model}[/cyan]\n"
+                    f"[dim]Summary:[/dim] {summary_preview}",
+                    title=f"[bold #6366f1]● Phase {phase_idx}/{total_p} Complete: {phase.title}[/bold #6366f1]",
+                    border_style="green" if res.success else "red",
+                    expand=False,
+                ))
 
                 # Update global plan step
                 step_idx = [p.phase_id for p in active_phases].index(phase.phase_id) + 1

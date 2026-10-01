@@ -326,6 +326,8 @@ async def main_async() -> int:
         tool_registry.register(RunParallelSubagentsTool(subagent_manager))
         if "swarm_dispatch" in tool_registry.tools:
             tool_registry.tools["swarm_dispatch"].subagent_manager = subagent_manager
+        from cord.tools.dynamic_tool import dynamic_tool_manager
+        dynamic_tool_manager.bind_registries(tool_registry=tool_registry, subagent_manager=subagent_manager)
 
     # 4. Initialize MCP Manager
     mcp_manager = None
