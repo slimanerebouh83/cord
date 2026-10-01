@@ -18,10 +18,11 @@ class Skill:
     description: str
     instructions: str
     path: Path
+    category: str = "General"
 
 
 class SkillLoader:
-    """Discovers and manages custom skills."""
+    """Discovers and manages custom and built-in skills."""
 
     def __init__(self, workspace_path: Optional[Path] = None):
         self.workspace_path = workspace_path or Path.cwd()
@@ -29,7 +30,9 @@ class SkillLoader:
         self.reload()
 
     def get_search_paths(self) -> List[Path]:
+        builtin_dir = Path(__file__).parent / "builtin"
         return [
+            builtin_dir,
             Path.home() / ".cord" / "skills",
             self.workspace_path / ".cord" / "skills",
         ]
@@ -54,9 +57,11 @@ class SkillLoader:
             # ---
             # name: my-skill
             # description: Does xyz
+            # category: System
             # ---
             name = default_name
             description = ""
+            category = "General"
             instructions = content
 
             frontmatter_match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
@@ -72,6 +77,8 @@ class SkillLoader:
                             name = v
                         elif k == "description":
                             description = v
+                        elif k == "category":
+                            category = v
 
             if not description:
                 # Use first non-empty line as description
@@ -83,9 +90,40 @@ class SkillLoader:
                 description=description,
                 instructions=instructions.strip(),
                 path=path,
+                category=category,
             )
         except Exception as e:
             ui.print_warning(f"Failed to load skill from {path}: {e}")
+
+    def get_skill(self, name: str) -> Optional[Skill]:
+        """Returns a skill by name (case-insensitive)."""
+        name_clean = name.strip().lower()
+        for k, v in self.skills.items():
+            if k.lower() == name_clean:
+                return v
+        return None
+
+    def list_skills(self) -> List[Skill]:
+        """Returns list of all active skills sorted by category and name."""
+        return sorted(self.skills.values(), key=lambda s: (s.category, s.name))
+
+    def create_skill(self, name: str, description: str, instructions: str, category: str = "Custom") -> Path:
+        """Creates a new custom skill in workspace .cord/skills/ directory."""
+        target_dir = self.workspace_path / ".cord" / "skills" / name.strip().lower().replace(" ", "-")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_path = target_dir / "SKILL.md"
+        content = (
+            f"---\n"
+            f"name: {name}\n"
+            f"description: {description}\n"
+            f"category: {category}\n"
+            f"---\n\n"
+            f"# {name} Skill\n\n"
+            f"{instructions}\n"
+        )
+        file_path.write_text(content, encoding="utf-8")
+        self.reload()
+        return file_path
 
     def format_skills_for_prompt(self) -> str:
         """Formats loaded skills into system prompt context."""
@@ -94,5 +132,5 @@ class SkillLoader:
 
         parts = ["\nAvailable Specialized Skills:\n"]
         for s in self.skills.values():
-            parts.append(f"### Skill: `{s.name}`\n**Description**: {s.description}\n**Instructions**:\n{s.instructions}\n")
+            parts.append(f"### Skill: `{s.name}` [{s.category}]\n**Description**: {s.description}\n**Instructions**:\n{s.instructions}\n")
         return "\n".join(parts)

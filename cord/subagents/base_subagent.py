@@ -360,6 +360,7 @@ class Subagent:
                 args_preview = str(t_args)[:60]
                 ui.print_tool_start(f"[{self.name}] {t_name}", args_preview)
 
+                t_sub_start = time.time()
                 if not tool_inst:
                     res_str = f"Error: Tool '{t_name}' not available to subagent."
                 else:
@@ -381,7 +382,19 @@ class Subagent:
                     except Exception as ex:
                         res_str = f"Error executing tool: {ex}"
 
+                elapsed_sub = time.time() - t_sub_start
                 ui.print_tool_result(f"[{self.name}] {t_name}", success="Error" not in res_str, snippet=res_str[:160])
+                try:
+                    from cord.tools.base import ToolResult
+                    from cord.ui.renderer import renderer
+                    tool_res_obj = ToolResult(
+                        success="Error" not in res_str,
+                        output=res_str if "Error" not in res_str else "",
+                        error=res_str if "Error" in res_str else None,
+                    )
+                    renderer.render_tool_execution(f"[{self.name}] {t_name}", t_args, tool_res_obj, elapsed_sub)
+                except Exception:
+                    pass
 
                 self.tool_history.append({
                     "tool": t_name,

@@ -1024,8 +1024,8 @@ class CordREPL:
         elif cmd == "/mcp":
             self._print_mcp()
 
-        elif cmd == "/skills":
-            self._print_skills()
+        elif cmd in ("/skills", "/skill"):
+            self._print_skills(arg.strip())
 
         elif cmd == "/cost":
             self._print_cost()
@@ -1548,20 +1548,79 @@ class CordREPL:
 
         ui.console.print(table)
 
-    def _print_skills(self) -> None:
-        if not self.skills or not self.skills.skills:
-            ui.print_info("No custom skills found in .cord/skills/ or ~/.cord/skills/.")
+    def _print_skills(self, arg: str = "") -> None:
+        if not self.skills:
+            ui.print_info("Skills engine is not initialized.")
             return
 
-        table = Table(title="✨ Project Skills", show_header=True, header_style="bold yellow")
-        table.add_column("Skill Name", style="bold white", width=20)
-        table.add_column("Description", style="dim")
-        table.add_column("Path", style="dim cyan")
+        parts = arg.split(maxsplit=1) if arg else []
+        subcmd = parts[0].lower() if parts else "list"
+        subarg = parts[1].strip() if len(parts) > 1 else ""
 
-        for s in self.skills.skills.values():
-            table.add_row(s.name, s.description[:50], str(s.path.name))
+        if subcmd in ("reload", "refresh"):
+            self.skills.reload()
+            ui.print_success(f"✨ Skills reloaded! Active skills count: [bold cyan]{len(self.skills.skills)}[/bold cyan]")
+            return
+
+        if subcmd in ("info", "show", "view"):
+            if not subarg:
+                ui.print_warning("Usage: /skills info <skill-name>")
+                return
+            target = self.skills.get_skill(subarg)
+            if not target:
+                ui.print_error(f"Skill '{subarg}' not found. Run /skills to see available skills.")
+                return
+            is_builtin = "builtin" in str(target.path).lower()
+            badge = "[bold green]Built-in System Skill[/bold green]" if is_builtin else "[bold magenta]Workspace Skill[/bold magenta]"
+            panel_content = (
+                f"[bold cyan]Category:[/bold cyan] {target.category}   •   [bold cyan]Type:[/bold cyan] {badge}\n"
+                f"[bold cyan]Location:[/bold cyan] [dim]{target.path}[/dim]\n"
+                f"[bold cyan]Description:[/bold cyan] {target.description}\n\n"
+                f"[bold yellow]Instructions Injected into System Prompt:[/bold yellow]\n"
+                f"[white]{target.instructions}[/white]"
+            )
+            ui.console.print(Panel(panel_content, title=f"✨ Skill: [bold white]{target.name}[/bold white]", border_style="cyan", padding=(1, 2)))
+            return
+
+        if subcmd in ("new", "create"):
+            if not subarg:
+                ui.print_warning("Usage: /skills new <skill-name>")
+                return
+            created_path = self.skills.create_skill(
+                name=subarg,
+                description=f"Specialized instructions for {subarg}",
+                instructions=f"Guidelines and directives for executing {subarg} tasks effectively.",
+                category="Custom",
+            )
+            ui.print_success(f"✔ Created new skill template at: [bold cyan]{created_path}[/bold cyan]")
+            ui.print_info("You can customize its directives anytime by editing the file.")
+            return
+
+        # Default: list all skills
+        all_skills = self.skills.list_skills() if hasattr(self.skills, "list_skills") else list(self.skills.skills.values())
+        if not all_skills:
+            ui.print_info("No skills currently loaded.")
+            return
+
+        table = Table(
+            title=f"✨ CORD Specialized Skills Library ({len(all_skills)} Active)",
+            show_header=True,
+            header_style="bold cyan",
+            border_style="bright_blue",
+        )
+        table.add_column("Category", style="yellow", width=18)
+        table.add_column("Skill Name", style="bold white", width=22)
+        table.add_column("Type", justify="center", width=12)
+        table.add_column("Description", style="dim")
+
+        for s in all_skills:
+            is_builtin = "builtin" in str(s.path).lower()
+            type_pill = "[bold green]Built-in[/bold green]" if is_builtin else "[bold magenta]Custom[/bold magenta]"
+            cat = getattr(s, "category", "General")
+            table.add_row(f"🏷️  {cat}", f"`{s.name}`", type_pill, s.description[:70] + ("..." if len(s.description) > 70 else ""))
 
         ui.console.print(table)
+        ui.console.print("[dim]Commands: [cyan]/skills info <name>[/cyan] (view prompt) │ [cyan]/skills new <name>[/cyan] (create) │ [cyan]/skills reload[/cyan][/dim]\n")
 
     def _print_cost(self) -> None:
         from cord.ui.split_view import calculate_real_cost

@@ -75,79 +75,143 @@ class ChatRenderer:
         tool_name: str,
         args: Dict[str, Any],
         result: ToolResult,
-        elapsed_sec: float,
+        elapsed_sec: float = 0.0,
+        elapsed: Optional[float] = None,
     ) -> None:
-        """Renders ultra-compact one-line execution badge matching modern OpenCode style."""
-        time_str = f"{elapsed_sec * 1000:.0f}ms" if elapsed_sec < 1 else f"{elapsed_sec:.1f}s"
+        """Renders ultra-gorgeous, modern cyberpunk tool execution cards with rich telemetry."""
+        if elapsed is not None:
+            elapsed_sec = elapsed
+        time_str = f"{elapsed_sec * 1000:.0f}ms" if elapsed_sec < 1 else f"{elapsed_sec:.2f}s"
         t_lower = tool_name.lower()
+        success = result.success
+        status_badge = f"[bold green]✓ SUCCESS {time_str}[/bold green]" if success else f"[bold red]✖ FAILED ({time_str})[/bold red]"
 
         # 1. Grep / Search Files
         if any(k in t_lower for k in ("grep", "search_files", "search_file", "find_in_files", "search")):
             query = str(args.get("query") or args.get("pattern") or args.get("search_term") or "")
-            if len(query) > 40:
-                query = query[:37] + "..."
+            if len(query) > 45:
+                query = query[:42] + "..."
             match_count = 0
             if result.metadata and "matches" in result.metadata:
                 match_count = len(result.metadata["matches"])
             elif result.output:
                 lines = [l for l in result.output.splitlines() if l.strip()]
                 match_count = len(lines)
-            cnt_str = f" [dim]({match_count} matches)[/dim]" if match_count > 0 else ""
-            err_str = f" [bold red]✖ {result.error[:40]}[/bold red]" if not result.success and result.error else ""
-            ui.console.print(f" [dim white]*[/dim white] [bold #38bdf8]Grep[/bold #38bdf8] \"[white]{query}[/white]\"{cnt_str}{err_str}")
+            cnt_str = f"{match_count} matches"
+            err_str = f" [bold red]✖ {result.error[:60]}[/bold red]" if not success and result.error else ""
+            b_color = "#0ea5e9" if success else "#ef4444"
+
+            card = (
+                f" [bold {b_color}]╭─ [bold cyan]🔍 SEARCH & RECON[/bold cyan] [dim]•[/dim] [bold white]Grep[/bold white] \"[bright_white]{query}[/bright_white]\" "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [bold white]Result:[/bold white] [bright_green]{cnt_str}[/bright_green] [dim]found in project codebase[/dim]{err_str}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 2. Glob / List Directory / Find
         if any(k in t_lower for k in ("glob", "list_dir", "find_files", "find_by_name", "list_files", "list_directory")):
             pattern = str(args.get("pattern") or args.get("path") or args.get("directory_path") or args.get("dir") or "**/*")
-            if len(pattern) > 40:
-                pattern = pattern[:37] + "..."
+            if len(pattern) > 45:
+                pattern = pattern[:42] + "..."
             match_count = 0
             if result.metadata and "count" in result.metadata:
                 match_count = result.metadata["count"]
             elif result.output:
                 match_count = len([l for l in result.output.splitlines() if l.strip()])
-            cnt_str = f" [dim]({match_count} matches)[/dim]" if match_count > 0 else ""
-            err_str = f" [bold red]✖ {result.error[:40]}[/bold red]" if not result.success and result.error else ""
-            ui.console.print(f" [dim white]*[/dim white] [bold #38bdf8]Glob[/bold #38bdf8] \"[white]{pattern}[/white]\"{cnt_str}{err_str}")
+            cnt_str = f"{match_count} matches"
+            err_str = f" [bold red]✖ {result.error[:60]}[/bold red]" if not success and result.error else ""
+            b_color = "#38bdf8" if success else "#ef4444"
+
+            card = (
+                f" [bold {b_color}]╭─ [bold cyan]📂 EXPLORER[/bold cyan] [dim]•[/dim] [bold white]Glob[/bold white] \"[bright_white]{pattern}[/bright_white]\" "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [bold white]Matched:[/bold white] [bright_cyan]{cnt_str}[/bright_cyan] [dim]indexed across repository[/dim]{err_str}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 3. Read File
         if any(k in t_lower for k in ("read_file", "view_file", "inspect_file")):
             raw_path = str(args.get("path") or args.get("file_path") or args.get("target_file") or args.get("absolutepath") or "")
             clean_path = raw_path.replace("\\", "/")
-            if len(clean_path) > 60:
+            short_path = clean_path
+            if len(clean_path) > 55:
                 parts = clean_path.split("/")
-                clean_path = ".../" + "/".join(parts[-3:])
-            err_str = f" [bold red]✖ {result.error[:40]}[/bold red]" if not result.success and result.error else ""
-            ui.console.print(f" [dim cyan]→[/dim cyan] [bold #38bdf8]Read[/bold #38bdf8] [white]{clean_path}[/white]{err_str}")
+                short_path = ".../" + "/".join(parts[-3:])
+            line_info = ""
+            if "start_line" in args or "startline" in args:
+                s = args.get("start_line", args.get("startline"))
+                e = args.get("end_line", args.get("endline", ""))
+                line_info = f" [dim](lines {s}-{e})[/dim]"
+            err_str = f" [bold red]✖ {result.error[:60]}[/bold red]" if not success and result.error else ""
+            b_color = "#10b981" if success else "#ef4444"
+
+            card = (
+                f" [bold {b_color}]╭─ [bold green]📄 FILE SYSTEM[/bold green] [dim]•[/dim] [bold white]Read[/bold white] [bright_white]{short_path}[/bright_white]{line_info} "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [dim]Path:[/dim] [white]{clean_path}[/white]{err_str}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 4. Edit / Write File
         if any(k in t_lower for k in ("edit_file", "write_file", "replace_file_content", "patch_file")):
             raw_path = str(args.get("path") or args.get("file_path") or args.get("target_file") or "")
             clean_path = raw_path.replace("\\", "/")
+            short_path = clean_path
             if len(clean_path) > 50:
                 parts = clean_path.split("/")
-                clean_path = ".../" + "/".join(parts[-3:])
+                short_path = ".../" + "/".join(parts[-3:])
             diff_str = ""
+            added = 0
+            removed = 0
             if result.metadata:
                 added = result.metadata.get("lines_added", 0)
                 removed = result.metadata.get("lines_removed", 0)
-                if added or removed:
-                    diff_str = f" [bold green]+{added}[/bold green] [bold red]-{removed}[/bold red]"
-            err_str = f" [bold red]✖ {result.error[:40]}[/bold red]" if not result.success and result.error else ""
+                diff_str = f" [bold green]+{added}[/bold green] [bold red]-{removed}[/bold red]"
+            err_str = f" [bold red]✖ {result.error[:60]}[/bold red]" if not success and result.error else ""
             action_label = "Edit" if "edit" in t_lower or "replace" in t_lower else "Write"
-            ui.console.print(f" [bold green]✓[/bold green] [bold #38bdf8]{action_label}[/bold #38bdf8] [white]{clean_path}[/white]{diff_str}{err_str}")
+            b_color = "#10b981" if success else "#ef4444"
+
+            desc = str(args.get("description", ""))
+            desc_line = f"\n [bold {b_color}]│[/bold {b_color}]  [dim]Change:[/dim] [bright_white]{desc[:70]}[/bright_white]" if desc else ""
+
+            card = (
+                f" [bold {b_color}]╭─ [bold green]✏️ SURGICAL WRITE[/bold green] [dim]•[/dim] [bold white]{action_label}[/bold white] [bright_white]{short_path}[/bright_white]{diff_str} "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [dim]Target File:[/dim] [white]{clean_path}[/white] │ [bold green]+{added}[/bold green] added │ [bold red]-{removed}[/bold red] removed{err_str}{desc_line}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 5. Shell / Command Execution
-        if any(k in t_lower for k in ("execute_command", "run_command", "shell", "bash")):
+        if any(k in t_lower for k in ("execute_command", "run_command", "shell", "bash", "powershell")):
             cmd = str(args.get("command") or args.get("commandline") or "")
-            if len(cmd) > 40:
-                cmd = cmd[:37] + "..."
-            status_str = f"[dim]({time_str})[/dim]" if result.success else "[bold red]failed[/bold red]"
-            ui.console.print(f" [bold yellow]⚡[/bold yellow] [bold #38bdf8]Command[/bold #38bdf8] \"[white]{cmd}[/white]\" {status_str}")
+            cmd_preview = cmd if len(cmd) <= 60 else cmd[:57] + "..."
+            status_str = f"[dim]({time_str})[/dim]" if success else "[bold red]failed[/bold red]"
+            b_color = "#f59e0b" if success else "#ef4444"
+
+            # Output preview
+            out_preview = ""
+            if result.output:
+                first_lines = [l.strip() for l in result.output.splitlines() if l.strip()][:2]
+                if first_lines:
+                    out_preview = f"\n [bold {b_color}]│[/bold {b_color}]  [dim]Output:[/dim] [white]" + " │ ".join(first_lines)[:70] + "[/white]"
+            elif result.error:
+                out_preview = f"\n [bold {b_color}]│[/bold {b_color}]  [bold red]Error:[/bold red] [white]{result.error[:70]}[/white]"
+
+            card = (
+                f" [bold {b_color}]╭─ [bold yellow]⚡ TERMINAL EXECUTION[/bold yellow] [dim]•[/dim] [bold white]Command[/bold white] \"[bright_white]{cmd_preview}[/bright_white]\" {status_str} "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [dim]$[/dim] [bright_yellow]{cmd_preview}[/bright_yellow]{out_preview}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 6. NITEE & Computer Use
@@ -158,27 +222,80 @@ class ChatRenderer:
                 target = f"[{len(args['plan'])} steps]"
             elif "element_id" in args:
                 target = str(args["element_id"])
-            ui.console.print(f" [bold #818cf8]🖥️[/bold #818cf8] [bold #38bdf8]NITEE[/bold #38bdf8] [white]{action} {target}[/white] [dim]({time_str})[/dim]")
+            elif "x" in args and "y" in args:
+                target = f"({args.get('x')}, {args.get('y')})"
+            elif "app_name" in args:
+                target = str(args.get("app_name"))
+
+            b_color = "#6366f1" if success else "#ef4444"
+            out_str = (result.output or result.error or "")[:70]
+
+            card = (
+                f" [bold {b_color}]╭─ [bold #818cf8]🖥️ DESKTOP AUTOMATION[/bold #818cf8] [dim]•[/dim] [bold white]NITEE[/bold white] [bright_white]{action} {target}[/bright_white] "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [bold white]Action:[/bold white] [bright_white]{action}[/bright_white] {target} │ [dim]{out_str}[/dim]\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
         # 7. Agent & Swarm Dispatch
         if any(k in t_lower for k in ("agent", "swarm", "subagent")):
-            name = str(args.get("role") or args.get("recipient") or args.get("name") or "Swarm Worker")
-            ui.console.print(f" [bold magenta]▣[/bold magenta] [bold #38bdf8]Agent[/bold #38bdf8] [white]{name}[/white] [dim]({time_str})[/dim]")
+            name = str(args.get("role") or args.get("recipient") or args.get("name") or "Swarm Peer")
+            b_color = "#a855f7" if success else "#ef4444"
+            task = str(args.get("task") or args.get("instructions") or args.get("prompt") or "")
+            task_line = f"\n [bold {b_color}]│[/bold {b_color}]  [dim]Assigned:[/dim] [bright_white]{task[:70]}[/bright_white]" if task else ""
+
+            card = (
+                f" [bold {b_color}]╭─ [bold magenta]🐝 SWARM PEER MESH[/bold magenta] [dim]•[/dim] [bold white]Agent[/bold white] [bright_white]{name}[/bright_white] "
+                f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+                f" [bold {b_color}]│[/bold {b_color}]  [bold white]Peer ID:[/bold white] [magenta]{name}[/magenta] [dim](Collaborative Autonomous Execution)[/dim]{task_line}\n"
+                f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+            )
+            ui.console.print(card)
             return
 
-        # General Fallback
+        # General Fallback Card
         primary_arg = ""
-        for k in ("path", "query", "action", "name", "text", "key"):
+        for k in ("path", "query", "action", "name", "text", "key", "url"):
             if k in args:
                 primary_arg = str(args[k])
                 break
         if not primary_arg and args:
             primary_arg = str(list(args.values())[0])
-        if len(primary_arg) > 35:
-            primary_arg = primary_arg[:32] + "..."
-        err_str = f" [bold red]✖ {result.error[:40]}[/bold red]" if not result.success and result.error else ""
-        ui.console.print(f" [dim cyan]•[/dim cyan] [bold #38bdf8]{tool_name}[/bold #38bdf8] [white]{primary_arg}[/white] [dim]({time_str})[/dim]{err_str}")
+        if len(primary_arg) > 40:
+            primary_arg = primary_arg[:37] + "..."
+
+        b_color = "#38bdf8" if success else "#ef4444"
+        out_summary = (result.output or result.error or "")[:75].replace("\n", " ")
+
+        card = (
+            f" [bold {b_color}]╭─ [bold cyan]⚙️ SYSTEM TOOL[/bold cyan] [dim]•[/dim] [bold white]{tool_name}[/bold white] \"[bright_white]{primary_arg}[/bright_white]\" "
+            f"[dim]──[/dim] [{status_badge}] ─╮[/bold {b_color}]\n"
+            f" [bold {b_color}]│[/bold {b_color}]  [dim]Result:[/dim] [white]{out_summary}[/white]\n"
+            f" [bold {b_color}]╰────────────────────────────────────────────────────────────────────────────╯[/bold {b_color}]"
+        )
+        ui.console.print(card)
+
+    @staticmethod
+    def render_swarm_event(
+        event_type: str,
+        sender: str,
+        recipient: str,
+        summary: str,
+    ) -> None:
+        """Renders an elegant real-time notification when swarm subagents communicate or coordinate."""
+        timestamp = time.strftime("%H:%M:%S")
+        card = (
+            f"\n [bold #a855f7]╭─ 🐝 SWARM COLLABORATION[/bold #a855f7] [dim]({timestamp})[/dim] "
+            f"[dim]──────────────────────────────[/dim]\n"
+            f" [bold #a855f7]│[/bold #a855f7]  [dim]Event:[/dim] [bold white]{event_type}[/bold white] "
+            f"│ [dim]From:[/dim] [bold cyan]{sender}[/bold cyan] "
+            f"→ [dim]To:[/dim] [bold magenta]{recipient}[/bold magenta]\n"
+            f" [bold #a855f7]│[/bold #a855f7]  [bright_white]{summary}[/bright_white]\n"
+            f" [bold #a855f7]╰────────────────────────────────────────────────────────────────────────────╯[/bold #a855f7]"
+        )
+        ui.console.print(card)
 
     @staticmethod
     def render_turn_telemetry(

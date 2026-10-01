@@ -31,6 +31,8 @@ class SwarmMessageBus:
         self._all_messages: deque = deque(maxlen=2000)
         self._message_count: int = 0
         self._virtual_capacity: int = 10000
+        self._plans: Dict[str, Dict[str, Any]] = {}
+        self._findings: deque = deque(maxlen=500)
 
     @property
     def agent_count(self) -> int:
@@ -131,10 +133,102 @@ class SwarmMessageBus:
                 })
         return results
 
+    def publish_plan(self, author_id: str, title: str, steps: List[str]) -> Dict[str, Any]:
+        """Publishes a collaborative execution plan across the swarm mesh."""
+        plan_id = f"plan-{int(time.time()*1000)}"
+        plan_data = {
+            "id": plan_id,
+            "author": author_id,
+            "title": title,
+            "steps": steps,
+            "timestamp": time.time(),
+            "votes": {author_id: True},
+            "status": "active"
+        }
+        self._plans[plan_id] = plan_data
+
+        steps_summary = " ➔ ".join(steps[:3]) + ("..." if len(steps) > 3 else "")
+        self.broadcast(
+            sender_id=author_id,
+            content=f"[Plan Published] {title}: {steps_summary}",
+            metadata={"type": "plan_publish", "plan_id": plan_id}
+        )
+
+        try:
+            from cord.ui.renderer import renderer
+            renderer.render_swarm_event(
+                event_type="📋 Shared Plan",
+                sender=author_id,
+                recipient="all peers",
+                summary=f"Published plan '{title}' ({len(steps)} steps)",
+            )
+        except Exception:
+            pass
+        return plan_data
+
+    def share_finding(self, author_id: str, topic: str, finding: str) -> Dict[str, Any]:
+        """Shares an insight or finding across the swarm mesh."""
+        finding_id = f"find-{int(time.time()*1000)}"
+        data = {
+            "id": finding_id,
+            "author": author_id,
+            "topic": topic,
+            "finding": finding,
+            "timestamp": time.time(),
+        }
+        self._findings.append(data)
+
+        self.broadcast(
+            sender_id=author_id,
+            content=f"[Finding on {topic}]: {finding}",
+            metadata={"type": "finding_shared", "topic": topic}
+        )
+
+        try:
+            from cord.ui.renderer import renderer
+            renderer.render_swarm_event(
+                event_type="💡 Finding Shared",
+                sender=author_id,
+                recipient="all peers",
+                summary=f"Insight on [{topic}]: {finding[:70]}",
+            )
+        except Exception:
+            pass
+        return data
+
+    def vote_on_plan(self, voter_id: str, plan_id: str, approve: bool, comment: str = "") -> bool:
+        """Votes on a shared swarm plan."""
+        if plan_id not in self._plans:
+            return False
+        self._plans[plan_id]["votes"][voter_id] = approve
+        vote_str = "Approved ✓" if approve else "Rejected ✖"
+
+        try:
+            from cord.ui.renderer import renderer
+            renderer.render_swarm_event(
+                event_type="🗳️ Plan Vote",
+                sender=voter_id,
+                recipient=self._plans[plan_id]["author"],
+                summary=f"{vote_str} plan '{self._plans[plan_id]['title']}' {comment}".strip(),
+            )
+        except Exception:
+            pass
+        return True
+
+    def get_active_plans(self) -> List[Dict[str, Any]]:
+        """Returns all active collaborative plans."""
+        return list(self._plans.values())
+
+    def get_findings(self) -> List[Dict[str, Any]]:
+        """Returns recent collaborative findings."""
+        return list(self._findings)
+
     def clear(self) -> None:
         self._inboxes.clear()
         self._channels.clear()
         self._all_messages.clear()
+        self._plans.clear()
+        self._findings.clear()
         self._message_count = 0
 
 

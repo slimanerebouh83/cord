@@ -132,7 +132,14 @@ class CordConsole:
             self.theme_name = theme_name
             self.console = Console(theme=THEMES[theme_name], highlight=True, safe_box=True)
 
-    def print_banner(self, model: str = "", provider: str = "", mode: str = "") -> None:
+    def print_banner(
+        self,
+        model: str = "",
+        provider: str = "",
+        mode: str = "",
+        skills_count: Optional[int] = None,
+        swarm_active: bool = True,
+    ) -> None:
         """Prints the CORD startup banner with metadata badges."""
         text = Text(LOGO_ASCII, style="header")
         sub = Text(f" {SUBTITLE}\n", style="subtle")
@@ -152,10 +159,25 @@ class CordConsole:
             badges.append(f" {mode.upper()} ", style=mode_style)
             badges.append("  ")
 
+        if skills_count is None:
+            try:
+                from cord.skills.loader import SkillLoader
+                skills_count = len(SkillLoader().skills)
+            except Exception:
+                skills_count = 0
+        if skills_count > 0:
+            badges.append(" [Skills] ", style="dim")
+            badges.append(f" {skills_count} Active ", style="bold cyan")
+            badges.append("  ")
+
+        if swarm_active:
+            badges.append(" [Swarm] ", style="dim")
+            badges.append(" 10k+ Mesh Ready ", style="bold #a855f7")
+
         panel = Panel(
             Text.assemble(text, sub, "\n", badges),
             border_style="accent",
-            subtitle="[dim]Type [bold]/help[/bold] for commands, [bold]Ctrl+C[/bold] to interrupt[/dim]",
+            subtitle="[dim]Type [bold]/help[/bold] for commands, [bold]/skills[/bold] for skills, [bold]Ctrl+C[/bold] to interrupt[/dim]",
             subtitle_align="center",
             padding=(0, 2),
         )

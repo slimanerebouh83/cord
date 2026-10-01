@@ -121,28 +121,33 @@ class ToolAnimation:
         spinner = SPINNER_FRAMES[frame_idx % len(SPINNER_FRAMES)]
 
         t_lower = self.tool_name.lower()
-        if "grep" in t_lower or "search" in t_lower:
-            verb = "Searching"
-        elif "read" in t_lower or "view" in t_lower:
-            verb = "Reading"
-        elif "write" in t_lower or "edit" in t_lower or "replace" in t_lower:
-            verb = "Editing"
-        elif "command" in t_lower or "shell" in t_lower:
-            verb = "Running"
-        elif "nitee" in t_lower or "computer" in t_lower:
-            verb = "Automating"
+        if any(k in t_lower for k in ("grep", "search", "find_in_files")):
+            icon, verb, style = "🔍", "Searching Codebase", "bold #0ea5e9"
+        elif any(k in t_lower for k in ("read", "view", "inspect")):
+            icon, verb, style = "📄", "Reading File", "bold #10b981"
+        elif any(k in t_lower for k in ("write", "edit", "replace", "patch")):
+            icon, verb, style = "✏️", "Applying Surgical Edit", "bold #10b981"
+        elif any(k in t_lower for k in ("command", "shell", "bash", "powershell")):
+            icon, verb, style = "⚡", "Executing Command", "bold #f59e0b"
+        elif any(k in t_lower for k in ("computer", "mouse", "keyboard", "window", "act", "nitee")):
+            icon, verb, style = "🖥️", "Automating Desktop", "bold #6366f1"
+        elif any(k in t_lower for k in ("screenshot", "vision")):
+            icon, verb, style = "👁️", "Capturing Screen", "bold #ec4899"
+        elif any(k in t_lower for k in ("subagent", "swarm", "agent", "fleet")):
+            icon, verb, style = "🐝", "Dispatching Swarm Peer", "bold #a855f7"
         else:
-            verb = self.tool_name
+            icon, verb, style = "⚙️", f"Executing {self.tool_name}", "bold #38bdf8"
 
         text = Text()
-        text.append(f" ~ ", style="bold #38bdf8")
-        text.append(f"{verb} ", style="bold white")
+        text.append(f" {spinner} ", style="bold bright_cyan")
+        text.append(f"{icon} ", style="bold")
+        text.append(f"{verb} ", style=style)
         if self.args_summary:
             summary = self.args_summary
-            if len(summary) > 40:
-                summary = summary[:37] + "..."
-            text.append(f"{summary} ", style="dim")
-        text.append(f"{spinner}", style="bold cyan")
+            if len(summary) > 42:
+                summary = summary[:39] + "..."
+            text.append(f"\"{summary}\" ", style="dim white")
+        text.append(f"│ ⏱️ {elapsed:.1f}s", style="dim")
         return text
 
     async def _animate(self) -> None:
