@@ -10,6 +10,19 @@ class ComputerSafetyLevel(str, Enum):
     INTERACTION = "INTERACTION"     # Mouse & keyboard permitted with interactive safety checks
     FULL_CONTROL = "FULL_CONTROL"   # Autonomous computer use with active kill switch
 
+def ensure_interactive_desktop():
+    """Attaches current thread to interactive user desktop (WinSta0\\default)."""
+    if sys.platform != "win32":
+        return
+    try:
+        DESKTOP_ALL = 0x01FF
+        hDesk = ctypes.windll.user32.OpenDesktopW("default", 0, False, DESKTOP_ALL)
+        if hDesk:
+            ctypes.windll.user32.SetThreadDesktop(hDesk)
+    except Exception:
+        pass
+
+
 class ComputerSafetyManager:
     _instance: ComputerSafetyManager | None = None
 
@@ -27,6 +40,7 @@ class ComputerSafetyManager:
     def _get_screen_resolution(self) -> tuple[int, int]:
         if sys.platform == "win32":
             try:
+                ensure_interactive_desktop()
                 user32 = ctypes.windll.user32
                 # Enable DPI awareness to get real physical pixels
                 try:
@@ -35,10 +49,29 @@ class ComputerSafetyManager:
                     pass
                 w = user32.GetSystemMetrics(0)
                 h = user32.GetSystemMetrics(1)
-                return (w, h)
+                if w > 0 and h > 0:
+                    return (w, h)
             except Exception:
                 pass
         return (1920, 1080)
+
+    @property
+    def virtual_bounds(self) -> tuple[int, int, int, int]:
+        """Returns (min_x, min_y, max_x, max_y) covering multi-monitor setups."""
+        if sys.platform == "win32":
+            try:
+                ensure_interactive_desktop()
+                user32 = ctypes.windll.user32
+                vx = user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+                vy = user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+                vw = user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+                vh = user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+                if vw > 0 and vh > 0:
+                    return (vx, vy, vx + vw, vy + vh)
+            except Exception:
+                pass
+        w, h = self.screen_size
+        return (0, 0, w, h)
 
     @property
     def screen_size(self) -> tuple[int, int]:
@@ -55,7 +88,7 @@ class ComputerSafetyManager:
     def is_stopped(self) -> bool:
         return self._emergency_stopped
 
-    def validate_action(self, action_type: str, x: int | None = None, y: int | None = None) -> tuple[bool, str]:
+    def validate_action(self, action_type: str, x: int | float | None = None, y: int | float | None = None) -> tuple[bool, str]:
         """Validate whether an action is permitted under the current safety level."""
         if self._emergency_stopped:
             return False, "Emergency kill switch is ACTIVE. All computer use actions blocked."
@@ -68,8 +101,13 @@ class ComputerSafetyManager:
                 return False, f"Action '{action_type}' blocked: Safety level is READ_ONLY."
 
         if x is not None and y is not None:
+            # Allow normalized coordinates (0.0 to 1.0 floats)
+            if isinstance(x, float) and isinstance(y, float) and 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+                return True, "Action permitted"
+
             w, h = self.screen_size
-            if x < 0 or x >= w or y < 0 or y >= h:
+            min_x, min_y, max_x, max_y = self.virtual_bounds
+            if x < min_x or x >= max_x or y < min_y or y >= max_y:
                 return False, f"Coordinates ({x}, {y}) out of screen bounds ({w}x{h})."
 
         return True, "Action permitted"

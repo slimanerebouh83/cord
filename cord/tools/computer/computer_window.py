@@ -14,7 +14,7 @@ from typing import Optional, List, Dict
 
 from cord.tools.base import BaseTool, ToolResult
 from cord.permissions.levels import PermissionLevel, RiskLevel
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
 
 SW_RESTORE = 9
 WM_CLOSE = 0x0010
@@ -23,6 +23,7 @@ def _force_foreground(hwnd: int) -> bool:
     """Forces window to foreground bypassing Windows 10 & 11 foreground lock."""
     if sys.platform != "win32":
         return False
+    ensure_interactive_desktop()
     user32 = ctypes.windll.user32
     user32.ShowWindow(hwnd, SW_RESTORE)
 
@@ -68,6 +69,7 @@ class ComputerWindowTool(BaseTool):
     }
 
     def _enum_windows(self) -> List[Dict[str, Any]]:
+        ensure_interactive_desktop()
         user32 = ctypes.windll.user32
         windows = []
 

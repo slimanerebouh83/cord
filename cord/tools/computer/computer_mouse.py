@@ -14,7 +14,7 @@ from typing import Optional
 
 from cord.tools.base import BaseTool, ToolResult
 from cord.permissions.levels import PermissionLevel, RiskLevel
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
 from cord.vision.ai_cursor import ai_cursor
 
 # Initialize high-precision 1ms timer on Windows
@@ -61,6 +61,7 @@ def _init_dpi_awareness():
     """Ensures accurate coordinate mapping on Windows 10 & 11 with 125%/150% DPI scaling."""
     if sys.platform == "win32":
         try:
+            ensure_interactive_desktop()
             # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
             ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
         except Exception:
@@ -72,7 +73,7 @@ def _init_dpi_awareness():
 _init_dpi_awareness()
 
 def _send_mouse_event(flags: int, data: int = 0, dx: int = 0, dy: int = 0):
-    """Sends a mouse event using modern Win32 SendInput API."""
+    """Sends a mouse event using modern Win32 SendInput API with mouse_event fallback."""
     user32 = ctypes.windll.user32
     inp = INPUT()
     inp.type = INPUT_MOUSE
@@ -82,11 +83,17 @@ def _send_mouse_event(flags: int, data: int = 0, dx: int = 0, dy: int = 0):
     inp.u.mi.dwFlags = flags
     inp.u.mi.time = 0
     inp.u.mi.dwExtraInfo = 0
-    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+    res = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+    if res != 1:
+        try:
+            user32.mouse_event(flags, dx, dy, int(data), 0)
+        except Exception:
+            pass
 
 def _get_cursor_pos() -> tuple[int, int]:
     """Returns current physical cursor position."""
     if sys.platform == "win32":
+        ensure_interactive_desktop()
         pt = wintypes.POINT()
         ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
         return pt.x, pt.y
@@ -97,6 +104,7 @@ def _activate_window_at(x: int, y: int):
     if sys.platform != "win32":
         return
     try:
+        ensure_interactive_desktop()
         user32 = ctypes.windll.user32
         pt = wintypes.POINT(int(x), int(y))
         hwnd = user32.WindowFromPoint(pt)
@@ -105,8 +113,12 @@ def _activate_window_at(x: int, y: int):
             target = root if root else hwnd
             cur_fore = user32.GetForegroundWindow()
             if target != cur_fore:
-                user32.SetForegroundWindow(target)
-                time.sleep(0.008)
+                try:
+                    from cord.tools.computer.computer_window import _force_foreground
+                    _force_foreground(target)
+                except Exception:
+                    user32.SetForegroundWindow(target)
+                time.sleep(0.04)
     except Exception:
         pass
 
@@ -116,6 +128,7 @@ def _glide_cursor_to(target_x: int, target_y: int, steps: int = 2, duration: flo
     Executes an ultra-fast eased trajectory in sub-4ms.
     Renders the Cyberpunk AI Cursor HUD reticle and dispatches hardware coordinates instantly.
     """
+    ensure_interactive_desktop()
     user32 = ctypes.windll.user32
     start_x, start_y = _get_cursor_pos()
     
@@ -158,20 +171,16 @@ class ComputerMouseTool(BaseTool):
                 "description": "Mouse action to execute"
             },
             "x": {
-                "type": "integer",
-                "description": "Target X coordinate on screen (0 to width)"
+                "description": "Target X coordinate on screen (pixel int or 0.0-1.0 normalized float)"
             },
             "y": {
-                "type": "integer",
-                "description": "Target Y coordinate on screen (0 to height)"
+                "description": "Target Y coordinate on screen (pixel int or 0.0-1.0 normalized float)"
             },
             "end_x": {
-                "type": "integer",
-                "description": "Destination X coordinate (only for 'drag' action)"
+                "description": "Destination X coordinate for 'drag' action"
             },
             "end_y": {
-                "type": "integer",
-                "description": "Destination Y coordinate (only for 'drag' action)"
+                "description": "Destination Y coordinate for 'drag' action"
             },
             "scroll_amount": {
                 "type": "integer",
@@ -185,16 +194,29 @@ class ComputerMouseTool(BaseTool):
     async def execute(
         self,
         action: str,
-        x: int | None = None,
-        y: int | None = None,
-        end_x: int | None = None,
-        end_y: int | None = None,
+        x: int | float | None = None,
+        y: int | float | None = None,
+        end_x: int | float | None = None,
+        end_y: int | float | None = None,
         scroll_amount: int = -120,
         **kwargs
     ) -> ToolResult:
         try:
             if sys.platform != "win32":
                 return ToolResult(success=False, output="", error="Native mouse control currently supports Windows.")
+
+            ensure_interactive_desktop()
+
+            # Resolve coordinates (handle normalized floats 0.0-1.0 or downscaled dimensions)
+            from cord.vision.vision_pipeline import resolve_screen_coordinates
+            ref_w = kwargs.get("reference_width")
+            ref_h = kwargs.get("reference_height")
+
+            if x is not None and y is not None:
+                x, y = resolve_screen_coordinates(x, y, reference_width=ref_w, reference_height=ref_h)
+
+            if end_x is not None and end_y is not None:
+                end_x, end_y = resolve_screen_coordinates(end_x, end_y, reference_width=ref_w, reference_height=ref_h)
 
             # Validate against safety boundaries
             allowed, reason = computer_safety.validate_action(action, x=x, y=y)
@@ -212,10 +234,11 @@ class ComputerMouseTool(BaseTool):
                     _activate_window_at(x, y)
                     _glide_cursor_to(x, y)
                     ai_cursor.show_click(int(x), int(y), button="left")
-                    time.sleep(0.002)
+                    time.sleep(0.02)
                 _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
-                time.sleep(0.002)
+                time.sleep(0.04)  # 40ms human-like hold time ensures Windows & Chromium register the click
                 _send_mouse_event(MOUSEEVENTF_LEFTUP)
+                time.sleep(0.02)
                 pos_str = f" at ({x}, {y})" if x is not None else ""
                 return ToolResult(success=True, output=f"Left click performed{pos_str} via SendInput")
 
@@ -224,16 +247,17 @@ class ComputerMouseTool(BaseTool):
                     _activate_window_at(x, y)
                     _glide_cursor_to(x, y)
                     ai_cursor.show_click(int(x), int(y), button="double")
-                    time.sleep(0.002)
+                    time.sleep(0.02)
                 # First click
                 _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
-                time.sleep(0.002)
+                time.sleep(0.04)
                 _send_mouse_event(MOUSEEVENTF_LEFTUP)
-                time.sleep(0.005)
+                time.sleep(0.06)
                 # Second click
                 _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
-                time.sleep(0.002)
+                time.sleep(0.04)
                 _send_mouse_event(MOUSEEVENTF_LEFTUP)
+                time.sleep(0.02)
                 pos_str = f" at ({x}, {y})" if x is not None else ""
                 return ToolResult(success=True, output=f"Double click performed{pos_str} via SendInput")
 
@@ -242,10 +266,11 @@ class ComputerMouseTool(BaseTool):
                     _activate_window_at(x, y)
                     _glide_cursor_to(x, y)
                     ai_cursor.show_click(int(x), int(y), button="right")
-                    time.sleep(0.002)
+                    time.sleep(0.02)
                 _send_mouse_event(MOUSEEVENTF_RIGHTDOWN)
-                time.sleep(0.002)
+                time.sleep(0.04)
                 _send_mouse_event(MOUSEEVENTF_RIGHTUP)
+                time.sleep(0.02)
                 pos_str = f" at ({x}, {y})" if x is not None else ""
                 return ToolResult(success=True, output=f"Right click performed{pos_str} via SendInput")
 
@@ -267,13 +292,13 @@ class ComputerMouseTool(BaseTool):
                 if x is not None and y is not None:
                     _activate_window_at(x, y)
                     _glide_cursor_to(x, y)
-                    time.sleep(0.01)
+                    time.sleep(0.02)
                 else:
                     cx = computer_safety.screen_size[0] // 2
                     cy = computer_safety.screen_size[1] // 2
                     _activate_window_at(cx, cy)
                     _glide_cursor_to(cx, cy)
-                    time.sleep(0.01)
+                    time.sleep(0.02)
 
                 raw_amt = int(scroll_amount)
                 step = -120 if raw_amt < 0 else 120

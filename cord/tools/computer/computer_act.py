@@ -13,8 +13,9 @@ from typing import List, Dict, Any, Optional
 
 from cord.tools.base import BaseTool, ToolResult
 from cord.permissions.levels import PermissionLevel, RiskLevel
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
 from cord.vision.ai_cursor import ai_cursor
+from cord.vision.vision_pipeline import resolve_screen_coordinates
 from cord.tools.computer.computer_mouse import (
     _glide_cursor_to,
     _activate_window_at,
@@ -105,8 +106,8 @@ class ComputerActTool(BaseTool):
     async def execute(
         self,
         action: str,
-        x: Optional[int] = None,
-        y: Optional[int] = None,
+        x: Optional[int | float] = None,
+        y: Optional[int | float] = None,
         text: Optional[str] = None,
         press_enter: bool = True,
         key: Optional[str] = None,
@@ -117,6 +118,11 @@ class ComputerActTool(BaseTool):
     ) -> ToolResult:
         if sys.platform != "win32":
             return ToolResult(success=False, output="", error="Native computer action execution currently supports Windows.")
+
+        ensure_interactive_desktop()
+
+        if x is not None and y is not None:
+            x, y = resolve_screen_coordinates(x, y)
 
         allowed, reason = computer_safety.validate_action(action, x=x, y=y)
         if not allowed:
@@ -133,9 +139,9 @@ class ComputerActTool(BaseTool):
                 _glide_cursor_to(x, y)
                 ai_cursor.show_click(int(x), int(y), button="left")
                 _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
-                time.sleep(0.02)
+                time.sleep(0.04)  # 40ms hold time
                 _send_mouse_event(MOUSEEVENTF_LEFTUP)
-                time.sleep(0.04)
+                time.sleep(0.05)
 
                 # Type text with Unicode SendInput
                 await self._kb.execute(action="type", text=text)
@@ -160,7 +166,7 @@ class ComputerActTool(BaseTool):
                 _glide_cursor_to(x, y)
                 ai_cursor.show_click(int(x), int(y), button="left")
                 _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
-                time.sleep(0.02)
+                time.sleep(0.04)  # 40ms hold time
                 _send_mouse_event(MOUSEEVENTF_LEFTUP)
                 return ToolResult(success=True, output=f"Clicked point at ({x}, {y}) with AI visual cursor.")
 
@@ -278,7 +284,7 @@ class ComputerActTool(BaseTool):
                 time.sleep(0.2)
 
                 # Submit via Ctrl+Enter (YouTube native shortcut to post comment)
-                await self._kb.execute(action="hotkey", keys=["ctrl", "enter"])
+                await self._kb.execute(action="hotkey", hotkey="ctrl+enter", keys=["ctrl", "enter"])
                 return ToolResult(
                     success=True,
                     output=f"Successfully typed comment '{comment_text}' on YouTube and submitted."

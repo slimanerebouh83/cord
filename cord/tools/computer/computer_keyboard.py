@@ -13,7 +13,7 @@ from typing import Optional, List
 
 from cord.tools.base import BaseTool, ToolResult
 from cord.permissions.levels import PermissionLevel, RiskLevel
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
 
 # Windows SendInput Constants
 INPUT_KEYBOARD = 1
@@ -266,6 +266,11 @@ class ComputerKeyboardTool(BaseTool):
                 "type": "string",
                 "description": "Combination formatted like 'ctrl+c', 'alt+f4', 'ctrl+shift+p', 'win+r'",
             },
+            "keys": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of keys for hotkey combo (e.g. ['ctrl', 'c'])",
+            },
             "window_title": {
                 "type": "string",
                 "description": "Optional window title to bring to front and focus before typing (e.g. 'Notepad', 'Chrome')",
@@ -296,6 +301,8 @@ class ComputerKeyboardTool(BaseTool):
         try:
             if sys.platform != "win32":
                 return ToolResult(success=False, output="", error="Native keyboard control currently supports Windows.")
+
+            ensure_interactive_desktop()
 
             allowed, reason = computer_safety.validate_action(action)
             if not allowed:
@@ -343,6 +350,13 @@ class ComputerKeyboardTool(BaseTool):
                 return ToolResult(success=True, output=f"Successfully pressed key: '{key}'.")
 
             elif action == "hotkey":
+                keys_arg = kwargs.get("keys")
+                if not hotkey and keys_arg:
+                    if isinstance(keys_arg, (list, tuple)):
+                        hotkey = "+".join(str(k) for k in keys_arg)
+                    elif isinstance(keys_arg, str):
+                        hotkey = keys_arg
+
                 if not hotkey:
                     return ToolResult(success=False, output="", error="hotkey string is required (e.g. 'ctrl+c')")
 

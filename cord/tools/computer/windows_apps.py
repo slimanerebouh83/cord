@@ -12,7 +12,7 @@ from typing import Optional
 
 from cord.tools.base import BaseTool, ToolResult
 from cord.permissions.levels import PermissionLevel, RiskLevel
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
 
 WINDOWS_APP_SHORTCUTS = {
     "notepad": "notepad.exe",
@@ -26,6 +26,11 @@ WINDOWS_APP_SHORTCUTS = {
     "terminal": "wt.exe",
     "paint": "mspaint.exe",
     "control": "control.exe",
+    "chrome": "chrome.exe",
+    "google chrome": "chrome.exe",
+    "edge": "msedge.exe",
+    "microsoft edge": "msedge.exe",
+    "browser": "msedge.exe",
 }
 
 class WindowsAppTool(BaseTool):
@@ -62,6 +67,8 @@ class WindowsAppTool(BaseTool):
     ) -> ToolResult:
         if sys.platform != "win32":
             return ToolResult(success=False, output="", error="windows_app is designed specifically for Windows 10 and 11.")
+
+        ensure_interactive_desktop()
 
         allowed, reason = computer_safety.validate_action(action)
         if not allowed:

@@ -299,6 +299,9 @@ class StructuralTree:
                     )
                     self._nodes[node_id] = node
 
+            if not self._nodes:
+                return self._generate_mock_tree()
+
             lines = [node.to_tree_line() for node in self._nodes.values()]
             return "\n".join(lines), dict(self._nodes)
         except Exception:

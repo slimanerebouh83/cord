@@ -3,9 +3,78 @@ from __future__ import annotations
 import base64
 import io
 import time
+import sys
+import ctypes
 from pathlib import Path
 from PIL import Image, ImageGrab
-from cord.vision.safety import computer_safety
+from cord.vision.safety import computer_safety, ensure_interactive_desktop
+
+
+def win32_capture_screen() -> Image.Image | None:
+    """Captures screen using native Win32 GDI with interactive desktop binding."""
+    if sys.platform != "win32":
+        return None
+    try:
+        ensure_interactive_desktop()
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+
+        try:
+            user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+        w = user32.GetSystemMetrics(0)
+        h = user32.GetSystemMetrics(1)
+        if w <= 0 or h <= 0:
+            return None
+
+        hdcScreen = user32.GetDC(0)
+        if not hdcScreen:
+            return None
+
+        hdcMem = gdi32.CreateCompatibleDC(hdcScreen)
+        hbm = gdi32.CreateCompatibleBitmap(hdcScreen, w, h)
+        hbm_old = gdi32.SelectObject(hdcMem, hbm)
+
+        gdi32.BitBlt(hdcMem, 0, 0, w, h, hdcScreen, 0, 0, 0x00CC0020)
+
+        class BITMAPINFOHEADER(ctypes.Structure):
+            _fields_ = [
+                ("biSize", ctypes.c_uint32),
+                ("biWidth", ctypes.c_int32),
+                ("biHeight", ctypes.c_int32),
+                ("biPlanes", ctypes.c_uint16),
+                ("biBitCount", ctypes.c_uint16),
+                ("biCompression", ctypes.c_uint32),
+                ("biSizeImage", ctypes.c_uint32),
+                ("biXPelsPerMeter", ctypes.c_int32),
+                ("biYPelsPerMeter", ctypes.c_int32),
+                ("biClrUsed", ctypes.c_uint32),
+                ("biClrImportant", ctypes.c_uint32),
+            ]
+
+        bmi = BITMAPINFOHEADER()
+        bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bmi.biWidth = w
+        bmi.biHeight = -h  # top-down DIB
+        bmi.biPlanes = 1
+        bmi.biBitCount = 32
+        bmi.biCompression = 0
+
+        buf = (ctypes.c_char * (w * h * 4))()
+        gdi32.GetDIBits(hdcMem, hbm, 0, h, ctypes.byref(buf), ctypes.byref(bmi), 0)
+
+        gdi32.SelectObject(hdcMem, hbm_old)
+        gdi32.DeleteObject(hbm)
+        gdi32.DeleteDC(hdcMem)
+        user32.ReleaseDC(0, hdcScreen)
+
+        im = Image.frombuffer("RGBA", (w, h), bytes(buf), "raw", "BGRA", 0, 1).convert("RGB")
+        return im
+    except Exception:
+        return None
+
 
 class VisionPipeline:
     def __init__(self, cache_dir: Path | None = None):
@@ -25,8 +94,19 @@ class VisionPipeline:
         and encode to base64.
         Returns a dict with physical dimensions, scaled dimensions, file path, and base64.
         """
-        # 1. Grab screen using PIL ImageGrab
-        img: Image.Image = ImageGrab.grab()
+        ensure_interactive_desktop()
+
+        # 1. Grab screen using native Win32 GDI or PIL ImageGrab fallback
+        img: Image.Image | None = win32_capture_screen()
+        if img is None:
+            try:
+                img = ImageGrab.grab(all_screens=True)
+            except Exception:
+                try:
+                    img = ImageGrab.grab()
+                except Exception as ex:
+                    raise OSError(f"Screen grab failed via all capture engines: {ex}") from ex
+
         original_w, original_h = img.size
 
         if crop_box:
@@ -78,11 +158,43 @@ class VisionPipeline:
         self.last_capture = res
         return res
 
-    def scale_point_to_screen(self, x: int, y: int, scaled_width: int, scaled_height: int) -> tuple[int, int]:
+    def scale_point_to_screen(self, x: int | float, y: int | float, scaled_width: int, scaled_height: int) -> tuple[int, int]:
         """Convert coordinates from downscaled vision model output back to physical screen pixels."""
-        screen_w, screen_h = computer_safety.screen_size
-        actual_x = int(x * (screen_w / scaled_width))
-        actual_y = int(y * (screen_h / scaled_height))
-        return (actual_x, actual_y)
+        return resolve_screen_coordinates(x, y, reference_width=scaled_width, reference_height=scaled_height)
+
+
+def resolve_screen_coordinates(
+    x: int | float | None,
+    y: int | float | None,
+    reference_width: int | None = None,
+    reference_height: int | None = None,
+) -> tuple[int, int]:
+    """
+    Universally resolves any coordinate representation to physical screen pixels:
+    - Floats in range [0.0, 1.0] -> scaled by screen dimensions
+    - Explicit reference width/height -> scaled proportionally
+    - Standard physical coordinates -> returned as integers
+    """
+    if x is None or y is None:
+        return 0, 0
+
+    screen_w, screen_h = computer_safety.screen_size
+
+    # 1. Handle normalized float coordinates in [0.0, 1.0]
+    rx = float(x)
+    ry = float(y)
+    if isinstance(x, float) and 0.0 <= x <= 1.0:
+        rx = x * screen_w
+    if isinstance(y, float) and 0.0 <= y <= 1.0:
+        ry = y * screen_h
+
+    # 2. Handle reference width/height scaling if provided
+    if reference_width and reference_height and reference_width > 0 and reference_height > 0:
+        if reference_width != screen_w or reference_height != screen_h:
+            rx = rx * (screen_w / reference_width)
+            ry = ry * (screen_h / reference_height)
+
+    return int(round(rx)), int(round(ry))
+
 
 vision_pipeline = VisionPipeline()
