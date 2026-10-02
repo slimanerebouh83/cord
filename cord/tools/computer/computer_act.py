@@ -29,6 +29,7 @@ from cord.tools.computer.computer_mouse import (
     MOUSEEVENTF_WHEEL,
 )
 from cord.tools.computer.computer_keyboard import ComputerKeyboardTool, release_all_modifiers
+from cord.subagents.computer_arbiter import computer_arbiter
 from cord.kinetic.engine import kinetic_engine
 from cord.kinetic.evolution import kinetic_evolution
 
@@ -179,6 +180,12 @@ class ComputerActTool(BaseTool):
         allowed, reason = computer_safety.validate_action(action, x=x, y=y)
         if not allowed:
             return ToolResult(success=False, output="", error=f"Computer action blocked: {reason}")
+
+        # Multi-agent desktop arbitration check: Ensure caller holds active lease
+        caller_agent = kwargs.get("_agent_name") or kwargs.get("agent_id")
+        can_run, reason_arb = computer_arbiter.can_execute(caller_agent)
+        if not can_run:
+            return ToolResult(success=False, output="", error=f"Computer action blocked by Arbiter: {reason_arb}")
 
         try:
             # 1. Full Compound Action Sequencer (Freedom of Execution: run multi-step pipeline in 1 turn)

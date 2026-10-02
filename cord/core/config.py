@@ -18,6 +18,9 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "default_model": "anthropic/claude-3.7-sonnet",
         "models": [
+            "anthropic/claude-opus-5.5",
+            "fable/fable-5.1-instruct",
+            "openai/gpt-astra-6",
             "anthropic/claude-3.7-sonnet",
             "anthropic/claude-3.7-sonnet:thinking",
             "deepseek/deepseek-r1",
@@ -49,6 +52,8 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
         "base_url": "https://api.anthropic.com/v1",
         "default_model": "claude-3-7-sonnet-20250219",
         "models": [
+            "claude-opus-5-5-20260301",
+            "claude-opus-5.5",
             "claude-3-7-sonnet-20250219",
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",
@@ -62,6 +67,8 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
         "base_url": "https://api.openai.com/v1",
         "default_model": "gpt-4o",
         "models": [
+            "gpt-astra-6",
+            "gpt-astra-6-preview",
             "o3-mini",
             "o1",
             "gpt-4.5-preview",
@@ -70,6 +77,18 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
         ],
         "api_format": "openai",
         "api_key_url": "https://platform.openai.com/api-keys",
+    },
+    "fable": {
+        "name": "Fable AI Official",
+        "base_url": "https://api.fable.ai/v1",
+        "default_model": "fable-5.1",
+        "models": [
+            "fable-5.1",
+            "fable-5.1-instruct",
+            "fable-5-fast",
+        ],
+        "api_format": "openai",
+        "api_key_url": "https://fable.ai/developers",
     },
     "gemini": {
         "name": "Google Gemini API (OpenAI Compatible)",

@@ -10,6 +10,12 @@ from .nitee_tool import NiteePlannerTool
 from .kinetic_tool import KineticActTool
 from .clipboard_tool import ClipboardTool
 from .system_info_tool import SystemInfoTool
+from .computer_negotiation_tools import (
+    RequestComputerControlTool,
+    ReleaseComputerControlTool,
+    ProposeComputerPlanTool,
+    GetComputerArbiterStatusTool,
+)
 
 __all__ = [
     "ComputerScreenshotTool",
@@ -23,4 +29,8 @@ __all__ = [
     "KineticActTool",
     "ClipboardTool",
     "SystemInfoTool",
+    "RequestComputerControlTool",
+    "ReleaseComputerControlTool",
+    "ProposeComputerPlanTool",
+    "GetComputerArbiterStatusTool",
 ]

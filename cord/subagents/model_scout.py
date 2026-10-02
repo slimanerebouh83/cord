@@ -16,6 +16,15 @@ from cord.core.config import ConfigManager
 # State-of-the-art 2025/2026 Model Intelligence Catalog
 LATEST_MODELS_CATALOG: Dict[str, Dict[str, Any]] = {
     # 1. Anthropic Claude
+    "claude-opus-5-5": {
+        "id": "anthropic/claude-opus-5.5",
+        "provider": "openrouter",
+        "name": "Claude Opus 5.5 (Next-Gen Cognitive Architecture)",
+        "org": "Anthropic",
+        "context": "500K",
+        "features": "Frontier Autonomous Software Engineering, Multi-modal Computer Use, Deep Reflection",
+        "release": "2026",
+    },
     "claude-3-7-sonnet": {
         "id": "anthropic/claude-3.7-sonnet",
         "provider": "openrouter",
@@ -122,6 +131,15 @@ LATEST_MODELS_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # 4. OpenAI
+    "gpt-astra-6": {
+        "id": "openai/gpt-astra-6",
+        "provider": "openrouter",
+        "name": "GPT-Astra 6 (Universal Autonomous Engine)",
+        "org": "OpenAI",
+        "context": "1M+",
+        "features": "End-to-end Computer Vision, Terminal Synthesis, and Frontier Logic",
+        "release": "2026",
+    },
     "o3-mini": {
         "id": "openai/o3-mini",
         "provider": "openrouter",
@@ -210,6 +228,17 @@ LATEST_MODELS_CATALOG: Dict[str, Dict[str, Any]] = {
         "context": "64K",
         "features": "Instant 3.3s response time, automatic failover target",
         "release": "2025",
+    },
+
+    # 8. Fable AI Frontier Models
+    "fable-5-1": {
+        "id": "fable/fable-5.1-instruct",
+        "provider": "openrouter",
+        "name": "Fable 5.1 (Omni-Agentic Reasoning & Swarm)",
+        "org": "Fable AI",
+        "context": "256K",
+        "features": "Agentic GUI Automation, Consensus Negotiation, Sub-second TTFT",
+        "release": "2026",
     },
 }
 

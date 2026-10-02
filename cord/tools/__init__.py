@@ -106,6 +106,12 @@ from cord.tools.computer.nitee_tool import NiteePlannerTool
 from cord.tools.computer.kinetic_tool import KineticActTool
 from cord.tools.computer.clipboard_tool import ClipboardTool
 from cord.tools.computer.system_info_tool import SystemInfoTool
+from cord.tools.computer.computer_negotiation_tools import (
+    RequestComputerControlTool,
+    ReleaseComputerControlTool,
+    ProposeComputerPlanTool,
+    GetComputerArbiterStatusTool,
+)
 
 # Skills Tools
 from cord.tools.skills.create_skill import CreateSkillTool
@@ -219,6 +225,10 @@ def get_default_tools() -> List[BaseTool]:
         KineticActTool(),
         ClipboardTool(),
         SystemInfoTool(),
+        RequestComputerControlTool(),
+        ReleaseComputerControlTool(),
+        ProposeComputerPlanTool(),
+        GetComputerArbiterStatusTool(),
         # Skills
         CreateSkillTool(),
         ImproveSkillTool(),

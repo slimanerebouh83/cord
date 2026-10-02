@@ -46,6 +46,16 @@ Your mission is to explore, track, benchmark, and discover state-of-the-art AI m
 You analyze model capabilities, reasoning efficiency, context windows, and register recommended models into CORD's configuration.
 {RESEARCH_RULES}"""
 
+OPERATOR_SYSTEM_PROMPT = f"""You are CORD-Operator, an autonomous desktop automation and computer-use specialist subagent.
+Your mission is to interact with the GUI, launch and manage applications, navigate websites, and execute complex desktop automation workflows with surgical precision.
+
+### COMPUTER USE & ARBITRATION PROTOCOL:
+1. **Coordination & Lease Acquisition**: The desktop (mouse, keyboard, active focus) is a shared hardware resource. Before executing sequences of input events via `computer_act` or direct mouse/keyboard tools, inspect arbiter status with `get_computer_arbiter_status` or acquire a control lease using `request_computer_control`.
+2. **Peer Deliberation & Consensus**: For critical, multi-window, or potentially irreversible workflows, propose the planned execution steps to your peer subagents using `propose_computer_plan` or `subagent_propose` to reach consensus before proceeding.
+3. **Graceful Release**: As soon as your planned actions are completed, immediately invoke `release_computer_control` to clear hardware modifiers and transfer control to any queued peer subagent.
+4. **Verification & Feedback**: Take screenshots (`computer_screenshot`) or inspect active windows (`computer_window`) to verify the screen state before and after actions.
+{RESEARCH_RULES}"""
+
 SWARM_BASE_TOOLS = [
     "subagent_send_message",
     "subagent_broadcast",
@@ -57,6 +67,25 @@ SWARM_BASE_TOOLS = [
     "subagent_consensus",
     "subagent_deliberate",
     "manage_process",
+]
+
+COMPUTER_CONTROL_TOOLS = [
+    "computer_act",
+    "computer_mouse",
+    "computer_keyboard",
+    "computer_screenshot",
+    "computer_window",
+    "launch_app",
+    "windows_app",
+    "browser_media",
+    "clipboard",
+    "system_info",
+    "nitee_plan",
+    "kinetic_act",
+    "request_computer_control",
+    "release_computer_control",
+    "propose_computer_plan",
+    "get_computer_arbiter_status",
 ]
 
 ROLE_CONFIGS: Dict[str, Dict[str, Any]] = {
@@ -75,6 +104,8 @@ ROLE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "read_file", "write_file", "edit_file", "list_directory", "list_dir", "search_files", "find_files", "grep_search",
             "execute_command", "run_shell", "run_tests", "git_status", "git_diff",
             "create_dynamic_tool", "repair_dynamic_tool", "list_dynamic_tools", "delete_dynamic_tool", "create_skill", "list_skills", "subagent_share_skill",
+            "request_computer_control", "release_computer_control", "propose_computer_plan", "get_computer_arbiter_status",
+            "computer_act", "computer_screenshot",
         ] + SWARM_BASE_TOOLS,
     },
     "reviewer": {
@@ -83,14 +114,17 @@ ROLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "allowed_tools": [
             "read_file", "list_directory", "list_dir", "search_files", "find_files", "grep_search",
             "git_status", "git_diff", "git_log", "list_skills",
+            "subagent_propose", "subagent_vote", "subagent_consensus",
         ] + SWARM_BASE_TOOLS,
     },
     "tester": {
-        "description": "QA tester who writes test files and executes tests.",
+        "description": "QA tester who writes test files, executes tests, and verifies UI automation.",
         "system_prompt": TESTER_SYSTEM_PROMPT,
         "allowed_tools": [
             "read_file", "write_file", "edit_file", "execute_command", "run_shell", "run_tests",
             "list_directory", "list_dir", "search_files", "find_files", "grep_search", "list_skills",
+            "request_computer_control", "release_computer_control", "propose_computer_plan", "get_computer_arbiter_status",
+            "computer_act", "computer_screenshot",
         ] + SWARM_BASE_TOOLS,
     },
     "model_scout": {
@@ -100,5 +134,13 @@ ROLE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "http_request", "inspect_url", "duckduckgo_search", "read_file", "write_file", "edit_file",
             "search_files", "browser_media", "create_skill",
         ] + SWARM_BASE_TOOLS,
+    },
+    "operator": {
+        "description": "Autonomous desktop and computer automation specialist. Controls mouse, keyboard, apps, and window automation with distributed arbitration and consensus.",
+        "system_prompt": OPERATOR_SYSTEM_PROMPT,
+        "allowed_tools": [
+            "read_file", "write_file", "execute_command", "run_shell",
+            "list_directory", "list_dir", "search_files",
+        ] + COMPUTER_CONTROL_TOOLS + SWARM_BASE_TOOLS,
     },
 }

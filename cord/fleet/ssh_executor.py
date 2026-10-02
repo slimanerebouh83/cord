@@ -138,6 +138,8 @@ class SSHExecutor:
                 success=False,
             )
 
+    run_command = execute
+
     async def upload(
         self,
         node: FleetNode,
