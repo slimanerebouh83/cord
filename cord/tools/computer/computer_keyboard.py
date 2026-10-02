@@ -204,6 +204,55 @@ def release_virtual_key(vk: int) -> None:
     user32.keybd_event(vk, scan, flags, 0)
 
 
+def press_keys_simultaneously(vks: List[int]) -> None:
+    """Presses down multiple virtual keys simultaneously in a single atomic SendInput call."""
+    if sys.platform != "win32" or not vks:
+        return
+
+    user32 = ctypes.windll.user32
+    inputs = (INPUT * len(vks))()
+    for idx, vk in enumerate(vks):
+        scan = user32.MapVirtualKeyW(vk, 0)
+        flags = KEYEVENTF_EXTENDEDKEY if vk in EXTENDED_KEYS else 0
+        inputs[idx].type = INPUT_KEYBOARD
+        inputs[idx].ii.ki = KEYBDINPUT(vk, scan, flags, 0, 0)
+
+    res = user32.SendInput(len(vks), ctypes.byref(inputs), ctypes.sizeof(INPUT))
+    if res != len(vks):
+        for vk in vks:
+            scan = user32.MapVirtualKeyW(vk, 0)
+            flags = KEYEVENTF_EXTENDEDKEY if vk in EXTENDED_KEYS else 0
+            user32.keybd_event(vk, scan, flags, 0)
+
+
+def release_keys_simultaneously(vks: List[int]) -> None:
+    """Releases multiple virtual keys simultaneously in reverse order in an atomic SendInput call."""
+    if sys.platform != "win32" or not vks:
+        return
+
+    user32 = ctypes.windll.user32
+    rev = list(reversed(vks))
+    inputs = (INPUT * len(rev))()
+    for idx, vk in enumerate(rev):
+        scan = user32.MapVirtualKeyW(vk, 0)
+        flags = KEYEVENTF_KEYUP | (KEYEVENTF_EXTENDEDKEY if vk in EXTENDED_KEYS else 0)
+        inputs[idx].type = INPUT_KEYBOARD
+        inputs[idx].ii.ki = KEYBDINPUT(vk, scan, flags, 0, 0)
+
+    res = user32.SendInput(len(rev), ctypes.byref(inputs), ctypes.sizeof(INPUT))
+    if res != len(rev):
+        for vk in rev:
+            scan = user32.MapVirtualKeyW(vk, 0)
+            flags = KEYEVENTF_KEYUP | (KEYEVENTF_EXTENDEDKEY if vk in EXTENDED_KEYS else 0)
+            user32.keybd_event(vk, scan, flags, 0)
+
+
+def release_all_modifiers() -> None:
+    """Releases all major modifier keys (Ctrl, Alt, Shift, Win) to prevent stuck keys."""
+    modifier_vks = [0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x10, 0xA0, 0xA1, 0x5B]
+    release_keys_simultaneously(modifier_vks)
+
+
 def activate_target_window(title_query: str) -> bool:
     """Brings matching target window to foreground to receive keyboard input."""
     if sys.platform != "win32" or not title_query:
@@ -251,8 +300,8 @@ class ComputerKeyboardTool(BaseTool):
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["type", "key", "hotkey"],
-                "description": "Keyboard action: 'type' for strings, 'key' for single key tap, 'hotkey' for multi-key combos",
+                "enum": ["type", "key", "hotkey", "chord", "multi_key", "key_down", "key_up", "release_all"],
+                "description": "Keyboard action: 'type' for strings, 'key' for single key tap, 'hotkey' for sequenced combo, 'chord' or 'multi_key' for simultaneous multi-key pressing, 'key_down' to hold keys, 'key_up' to release, 'release_all' to release stuck modifiers",
             },
             "text": {
                 "type": "string",
@@ -269,7 +318,12 @@ class ComputerKeyboardTool(BaseTool):
             "keys": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Optional list of keys for hotkey combo (e.g. ['ctrl', 'c'])",
+                "description": "List of keys for chord or multi_key (e.g. ['ctrl', 'shift', 'esc'], ['alt', 'tab'])",
+            },
+            "hold_duration_ms": {
+                "type": "integer",
+                "description": "Duration to hold keys down in milliseconds for simultaneous key combos (default: 50ms)",
+                "default": 50,
             },
             "window_title": {
                 "type": "string",
@@ -381,6 +435,76 @@ class ComputerKeyboardTool(BaseTool):
                     time.sleep(0.015)
 
                 return ToolResult(success=True, output=f"Successfully executed hotkey combo: '{hotkey}'.")
+
+            elif action in ("chord", "multi_key"):
+                # Simultaneous key pressing in a single atomic SendInput call
+                keys_list = kwargs.get("keys")
+                if not keys_list and hotkey:
+                    keys_list = [p.strip() for p in hotkey.split("+")]
+                elif isinstance(keys_list, str):
+                    keys_list = [p.strip() for p in keys_list.split("+")]
+
+                if not keys_list:
+                    return ToolResult(success=False, output="", error="keys list or combo string is required for chord action (e.g. ['ctrl', 'shift', 'esc']).")
+
+                vks = []
+                for p in keys_list:
+                    vk = self._resolve_vk(p)
+                    if vk is None:
+                        return ToolResult(success=False, output="", error=f"Unrecognized key in chord: '{p}'")
+                    vks.append(vk)
+
+                hold_ms = kwargs.get("hold_duration_ms", 50)
+                hold_sec = max(0.01, min(float(hold_ms) / 1000.0, 3.0))
+
+                # Atomic simultaneous key press
+                press_keys_simultaneously(vks)
+                time.sleep(hold_sec)
+                release_keys_simultaneously(vks)
+
+                combo_name = "+".join(str(k) for k in keys_list)
+                return ToolResult(
+                    success=True,
+                    output=f"Successfully executed simultaneous multi-key chord [{combo_name}] held for {int(hold_sec*1000)}ms."
+                )
+
+            elif action == "key_down":
+                target_keys = kwargs.get("keys") or ([key] if key else [])
+                if isinstance(target_keys, str):
+                    target_keys = [p.strip() for p in target_keys.split("+")]
+                if not target_keys:
+                    return ToolResult(success=False, output="", error="key or keys parameter required for key_down action.")
+
+                vks = []
+                for p in target_keys:
+                    vk = self._resolve_vk(p)
+                    if vk is None:
+                        return ToolResult(success=False, output="", error=f"Unrecognized key: '{p}'")
+                    vks.append(vk)
+
+                press_keys_simultaneously(vks)
+                return ToolResult(success=True, output=f"Holding down key(s): {', '.join(target_keys)}.")
+
+            elif action == "key_up":
+                target_keys = kwargs.get("keys") or ([key] if key else [])
+                if isinstance(target_keys, str):
+                    target_keys = [p.strip() for p in target_keys.split("+")]
+                if not target_keys:
+                    return ToolResult(success=False, output="", error="key or keys parameter required for key_up action.")
+
+                vks = []
+                for p in target_keys:
+                    vk = self._resolve_vk(p)
+                    if vk is None:
+                        return ToolResult(success=False, output="", error=f"Unrecognized key: '{p}'")
+                    vks.append(vk)
+
+                release_keys_simultaneously(vks)
+                return ToolResult(success=True, output=f"Released key(s): {', '.join(target_keys)}.")
+
+            elif action == "release_all":
+                release_all_modifiers()
+                return ToolResult(success=True, output="Released all modifier keys (Ctrl, Alt, Shift, Win).")
 
             return ToolResult(success=False, output="", error=f"Unknown action: '{action}'")
 

@@ -84,6 +84,15 @@ LATEST_MODELS_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # 3. Google Gemini
+    "gemini-2-5-flash": {
+        "id": "gemini-2.5-flash",
+        "provider": "gemini",
+        "name": "Gemini 2.5 Flash",
+        "org": "Google",
+        "context": "1M+",
+        "features": "Next-generation ultra-fast multimodal intelligence & code",
+        "release": "2025",
+    },
     "gemini-2-5-pro": {
         "id": "google/gemini-2.5-pro-exp-02-05",
         "provider": "openrouter",

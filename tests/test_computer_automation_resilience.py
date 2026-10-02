@@ -124,3 +124,83 @@ def test_vision_pipeline_capture():
     assert res["height"] > 0
     assert len(res["base64"]) > 0
     assert res["data_uri"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.asyncio
+async def test_computer_act_compound_sequence():
+    act = ComputerActTool()
+
+    with patch("cord.tools.computer.computer_act._activate_window_at"), \
+         patch("cord.tools.computer.computer_act._glide_cursor_to"), \
+         patch("cord.tools.computer.computer_act._send_mouse_event"), \
+         patch("cord.tools.computer.computer_act.ai_cursor.show_click"), \
+         patch.object(act._kb, "execute", return_value=MagicMock(success=True, output="ok")):
+
+        steps = [
+            {"action": "scroll_down", "amount": -800},
+            {"action": "click", "x": 500, "y": 300},
+            {"action": "scroll_down", "amount": -600},
+            {"action": "chord", "keys": ["ctrl", "c"]},
+        ]
+
+        res = await act.execute(action="sequence", steps=steps)
+        assert res.success is True
+        assert "4/4 actions in" in res.output
+        assert "Scrolled down 800px" in res.output
+        assert "Left-clicked at (500, 300)" in res.output
+        assert "Scrolled down 600px" in res.output
+        assert "Simultaneous chord [ctrl+c]" in res.output
+
+
+@pytest.mark.asyncio
+async def test_computer_act_freedom_of_execution_alias():
+    act = ComputerActTool()
+
+    with patch.object(act._kb, "execute", return_value=MagicMock(success=True, output="ok")):
+        # Auto-routing: passing sequence parameter directly without action="sequence"
+        seq = [
+            {"action": "wait", "delay_ms": 10},
+            {"action": "key", "key": "enter"},
+        ]
+        res = await act.execute(action="", sequence=seq)
+        assert res.success is True
+        assert "2/2 actions in" in res.output
+        assert "Waited 10ms" in res.output
+        assert "Pressed key 'enter'" in res.output
+
+
+@pytest.mark.asyncio
+async def test_computer_keyboard_simultaneous_chord():
+    kb = ComputerKeyboardTool()
+
+    with patch("cord.tools.computer.computer_keyboard.press_keys_simultaneously") as mock_press, \
+         patch("cord.tools.computer.computer_keyboard.release_keys_simultaneously") as mock_rel:
+
+        res = await kb.execute(action="chord", keys=["ctrl", "shift", "esc"], hold_duration_ms=20)
+        assert res.success is True
+        assert "simultaneous multi-key chord [ctrl+shift+esc]" in res.output
+        mock_press.assert_called_once()
+        mock_rel.assert_called_once()
+        # Verify 3 virtual keys were sent
+        assert len(mock_press.call_args[0][0]) == 3
+
+
+@pytest.mark.asyncio
+async def test_computer_keyboard_key_down_up_release_all():
+    kb = ComputerKeyboardTool()
+
+    with patch("cord.tools.computer.computer_keyboard.press_keys_simultaneously") as mock_press, \
+         patch("cord.tools.computer.computer_keyboard.release_keys_simultaneously") as mock_rel:
+
+        res_down = await kb.execute(action="key_down", keys=["shift"])
+        assert res_down.success is True
+        assert "Holding down key(s): shift" in res_down.output
+
+        res_up = await kb.execute(action="key_up", keys=["shift"])
+        assert res_up.success is True
+        assert "Released key(s): shift" in res_up.output
+
+        res_rel = await kb.execute(action="release_all")
+        assert res_rel.success is True
+        assert "Released all modifier keys" in res_rel.output
+
