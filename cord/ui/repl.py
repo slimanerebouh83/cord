@@ -105,8 +105,96 @@ SLASH_COMMANDS = [cmd for cmd, _ in SLASH_COMMAND_INFO]
 class CordMentionAndCommandCompleter(Completer):
     """Provides instant popup autocompletion for '/' slash commands and '@' workspace mentions."""
 
+    EXCLUDED_DIRS = {
+        ".git", "__pycache__", "node_modules", ".venv", "venv", ".cord", ".pytest_cache",
+        ".cache", "appdata", "application data", "local settings", "cookies", "recent",
+        "sendto", "start menu", "templates", ".gemini", ".vscode", ".idea", "dist",
+        "build", "target", "vendor", "bin", "obj", ".mypy_cache", ".tox",
+        "system volume information", "$recycle.bin", ".npm", ".cargo", ".rustup",
+        ".gradle", ".m2", ".conda", ".docker", ".antigravity", ".local", "temp", "tmp",
+        "windows", "program files", "program files (x86)", "programdata",
+    }
+
     def __init__(self, workspace_dir: str = ""):
         self.workspace_dir = workspace_dir
+        self._cached_files: List[tuple[str, int]] = []
+        self._cache_time: float = 0.0
+        self._cache_root: str = ""
+        self._ollama_cache_time: float = 0.0
+        self._ollama_cached_models: List[Dict[str, Any]] = []
+
+    def _get_workspace_files(self, root: Path) -> List[tuple[str, int]]:
+        now = time.time()
+        root_str = str(root.resolve()) if root.exists() else str(root)
+        if self._cache_root == root_str and (now - self._cache_time) < 5.0:
+            return self._cached_files
+
+        collected: List[tuple[str, int]] = []
+        if not root.exists() or not root.is_dir():
+            self._cached_files = collected
+            self._cache_time = now
+            self._cache_root = root_str
+            return collected
+
+        # Detect if root is user home or root drive to protect against huge/circular trees
+        is_home_or_root = False
+        try:
+            home_path = Path.home().resolve()
+            resolved_root = root.resolve()
+            if resolved_root == home_path or resolved_root.parent == resolved_root or len(resolved_root.parts) <= 2:
+                is_home_or_root = True
+        except Exception:
+            pass
+
+        # If user home or root drive, strictly search depth 1 (top-level files only)
+        max_depth = 1 if is_home_or_root else 2
+        max_files = 80
+        t0 = time.perf_counter()
+        time_limit_sec = 0.03  # 30ms strict UI-safety budget
+
+        queue: List[tuple[Path, int]] = [(root, 0)]
+
+        while queue and len(collected) < max_files:
+            if (time.perf_counter() - t0) > time_limit_sec:
+                break
+            current_dir, depth = queue.pop(0)
+
+            try:
+                with os.scandir(current_dir) as it:
+                    subdirs: List[Path] = []
+                    for entry in it:
+                        if (time.perf_counter() - t0) > time_limit_sec or len(collected) >= max_files:
+                            break
+                        try:
+                            name_lower = entry.name.lower()
+                            if entry.is_dir(follow_symlinks=False):
+                                if entry.is_symlink():
+                                    continue
+                                if name_lower in self.EXCLUDED_DIRS or (name_lower.startswith(".") and not name_lower == ".cord"):
+                                    continue
+                                if depth + 1 < max_depth:
+                                    subdirs.append(Path(entry.path))
+                            elif entry.is_file(follow_symlinks=False):
+                                try:
+                                    rel = Path(entry.path).relative_to(root).as_posix()
+                                except ValueError:
+                                    rel = entry.name
+                                try:
+                                    size = entry.stat(follow_symlinks=False).st_size
+                                except Exception:
+                                    size = 0
+                                collected.append((rel, size))
+                        except (PermissionError, OSError):
+                            continue
+                    if depth + 1 < max_depth:
+                        queue.extend((d, depth + 1) for d in subdirs)
+            except (PermissionError, OSError):
+                continue
+
+        self._cached_files = collected
+        self._cache_time = now
+        self._cache_root = root_str
+        return collected
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -167,40 +255,40 @@ class CordMentionAndCommandCompleter(Completer):
             except Exception:
                 pass
 
-            # Local Ollama Models
-            try:
-                from cord.models.ollama_manager import ollama_mgr
-                if ollama_mgr.is_running(timeout_sec=0.5):
-                    for m in ollama_mgr.list_models()[:8]:
-                        token = f"@ollama:{m['name']}"
-                        if token.lower().startswith("@" + query):
-                            yield Completion(token, start_position=start_pos, display=token, display_meta=f"Local ({m['size']})")
-            except Exception:
-                pass
+            # Local Ollama Models (cached & only if query matches @ol or ollama)
+            if "@ollama".startswith("@" + query) or query.startswith("ol"):
+                now = time.time()
+                if (now - self._ollama_cache_time) > 10.0:
+                    self._ollama_cache_time = now
+                    self._ollama_cached_models = []
+                    try:
+                        from cord.models.ollama_manager import ollama_mgr
+                        if ollama_mgr.is_running(timeout_sec=0.1):
+                            self._ollama_cached_models = ollama_mgr.list_models()[:8]
+                    except Exception:
+                        self._ollama_cached_models = []
 
-            # Workspace files
+                for m in self._ollama_cached_models:
+                    token = f"@ollama:{m.get('name', '')}"
+                    if token.lower().startswith("@" + query):
+                        yield Completion(token, start_position=start_pos, display=token, display_meta=f"Local ({m.get('size', 'N/A')})")
+
+            # Workspace files (cached, shallow, non-blocking)
             root = Path(self.workspace_dir or os.getcwd())
-            if root.exists():
-                count = 0
-                for p in root.glob("**/*"):
-                    if count >= 25:
-                        break
-                    parts = p.parts
-                    if any(ignored in parts for ignored in (".git", "__pycache__", "node_modules", ".venv", ".cord", ".pytest_cache", "venv")):
-                        continue
-                    if p.is_file():
-                        try:
-                            rel = p.relative_to(root).as_posix()
-                        except ValueError:
-                            rel = p.name
-                        if rel.lower().startswith(query) or query in rel.lower():
-                            yield Completion(
-                                f"@{rel}",
-                                start_position=start_pos,
-                                display=f"@{rel}",
-                                display_meta=f"File ({p.stat().st_size}B)",
-                            )
-                            count += 1
+            files = self._get_workspace_files(root)
+            count = 0
+            for rel, size in files:
+                if count >= 20:
+                    break
+                rel_lower = rel.lower()
+                if not query or rel_lower.startswith(query) or query in rel_lower:
+                    yield Completion(
+                        f"@{rel}",
+                        start_position=start_pos,
+                        display=f"@{rel}",
+                        display_meta=f"File ({size}B)",
+                    )
+                    count += 1
 
 
 SlashCommandCompleter = CordMentionAndCommandCompleter
@@ -245,7 +333,14 @@ class CordREPL:
         history_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Keybindings: multiline (Alt+Enter), Sessions (Alt+H), Microphone (Alt+M or F2), Split (Ctrl+S), Commands (Ctrl+P), Models (Ctrl+T)
+        from prompt_toolkit.filters import has_completions
+
         kb = KeyBindings()
+
+        @kb.add("escape", filter=has_completions)
+        def _(event):
+            event.current_buffer.cancel_completion()
+
         @kb.add("escape", "enter")
         def _(event):
             event.current_buffer.insert_text("\n")

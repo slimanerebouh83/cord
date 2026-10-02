@@ -109,3 +109,36 @@ def test_role_configs_has_model_scout():
     assert "Claude" in role["system_prompt"]
     assert "DeepSeek" in role["system_prompt"]
     assert "Kimi" in role["system_prompt"]
+
+
+def test_mention_completer_instant_response_on_home_dir():
+    import time
+    from pathlib import Path
+    from cord.ui.repl import CordMentionAndCommandCompleter
+
+    completer = CordMentionAndCommandCompleter(workspace_dir=str(Path.home()))
+    t0 = time.perf_counter()
+    completions = list(completer.get_completions(Document("@"), None))
+    elapsed = time.perf_counter() - t0
+
+    # Must complete almost instantaneously (under 150ms), preventing any UI freeze
+    assert elapsed < 0.15, f"Completion took too long: {elapsed:.3f}s"
+
+    texts = [c.text for c in completions]
+    assert "@git" in texts
+    assert "@tasks" in texts
+
+    # Ensure no AppData or deep internal recursion leaked in
+    for t in texts:
+        assert "appdata" not in t.lower()
+
+
+def test_mention_completer_filtering():
+    from pathlib import Path
+    from cord.ui.repl import CordMentionAndCommandCompleter
+
+    completer = CordMentionAndCommandCompleter(workspace_dir=str(Path.home()))
+    completions = list(completer.get_completions(Document("@gi"), None))
+    texts = [c.text for c in completions]
+    assert "@git" in texts
+
