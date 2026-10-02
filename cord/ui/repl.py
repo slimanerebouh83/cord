@@ -711,12 +711,47 @@ class CordREPL:
             cfg = self.config_mgr.config
             ui.print_banner(model=cfg.model, provider=cfg.provider, mode=cfg.permission_mode)
 
-        elif cmd == "/undo":
+        elif cmd in ("/undo", "/rewind"):
             res = checkpoint_mgr.undo()
             if res:
                 ui.print_success(f"[bold]Undo Completed:[/bold] {res}")
             else:
                 ui.print_info("No file changes in history to undo.")
+
+        elif cmd in ("/graph", "/code-graph"):
+            from cord.core.code_graph import code_graph_engine
+            code_graph_engine.render_overview()
+
+        elif cmd in ("/impact", "/blast-radius"):
+            from cord.core.code_graph import code_graph_engine
+            target = arg.strip() if arg.strip() else "main.py"
+            code_graph_engine.render_blast_radius(target)
+
+        elif cmd in ("/sentinel", "/council", "/rfc"):
+            from cord.subagents.sentinel import community_sentinel
+            clean_arg = arg.strip()
+            if clean_arg.startswith("triage "):
+                topic = clean_arg[7:].strip()
+                await community_sentinel.triage_proposal(
+                    title=topic,
+                    description=f"User proposed RFC: {topic}",
+                    source="repl",
+                )
+            else:
+                community_sentinel.render_overview()
+
+        elif cmd in ("/radar", "/mcp-market"):
+            from cord.core.tech_radar import tech_radar
+            clean_arg = arg.strip()
+            if clean_arg.startswith("install "):
+                s_key = clean_arg[8:].strip()
+                res = tech_radar.install_mcp_server(s_key)
+                if res["success"]:
+                    ui.print_success(res["message"])
+                else:
+                    ui.print_error(res["error"])
+            else:
+                tech_radar.render_radar()
 
         elif cmd == "/compact":
             msg = self.agent.compact_context()

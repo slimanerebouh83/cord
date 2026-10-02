@@ -59,6 +59,15 @@ from cord.tools.dynamic_tool import (
     DeleteDynamicTool,
 )
 
+# AST Code Graph & Impact Analysis
+from cord.tools.code_graph_tool import CodeImpactAnalysisTool
+
+# Community Sentinel & Council Triage
+from cord.tools.sentinel_tool import SentinelTriageTool
+
+# Internet Tech Radar & MCP Marketplace
+from cord.tools.tech_radar_tool import TechRadarTool
+
 # Git Tools
 from cord.tools.git.git_status import GitStatusTool
 from cord.tools.git.git_diff import GitDiffTool
@@ -233,5 +242,9 @@ def get_default_tools() -> List[BaseTool]:
         ManageVoiceModelsTool(),
         OllamaModelTool(),
         ManageProvidersTool(),
+        # Code Graph & Frontier Tools
+        CodeImpactAnalysisTool(),
+        SentinelTriageTool(),
+        TechRadarTool(),
     ]
 

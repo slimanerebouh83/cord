@@ -453,6 +453,27 @@ class CordAgent:
 
             # If no tools called, we've completed the turn!
             if not formatted_tool_calls:
+                # If model produced no text or empty whitespace on loop 1 with tool schemas, retry directly without tools
+                if not assistant_text.strip() and loop_count == 1 and tool_schemas:
+                    try:
+                        async for chunk in self.llm.stream_chat(
+                            messages=self.messages,
+                            tools=None,
+                            system_prompt=system_prompt,
+                        ):
+                            if chunk.thinking:
+                                thinking_text += chunk.thinking
+                            if chunk.text:
+                                if not header_printed:
+                                    renderer.render_assistant_header(self.config.model)
+                                    header_printed = True
+                                assistant_text += chunk.text
+                                ui.console.print(chunk.text, end="")
+                        if header_printed:
+                            ui.console.print("")
+                    except Exception:
+                        pass
+
                 final_response = assistant_text
                 renderer.render_turn_telemetry(
                     tokens=tokens_generated,
@@ -627,8 +648,13 @@ class CordAgent:
             if executed_actions:
                 succ_count = sum(1 for a in executed_actions if a.get("success"))
                 final_response = f"تم إكمال خطة العمل بنجاح ({succ_count}/{len(executed_actions)} إجراء مكتمل)."
+            elif thinking_text.strip():
+                final_response = thinking_text.strip()
             else:
-                final_response = "تمت العملية بنجاح."
+                final_response = (
+                    f"لم يقم النموذج '{self.config.model}' بإرجاع أي رد نصي.\n"
+                    f"💡 تلميح: قد يكون هذا النموذج أو نقطة النهاية (Endpoint) لا تستجيب بشكل صحيح. يمكنك التبديل إلى نموذج نشط باستخدام /models أو /provider."
+                )
             renderer.render_assistant_header(self.config.model)
             ui.console.print(final_response)
 

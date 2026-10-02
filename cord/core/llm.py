@@ -373,8 +373,24 @@ class LLMClient:
 
                                 # 2. Text content filtered through ThoughtStreamFilter
                                 content = delta.get("content")
+                                if not content and "text" in delta:
+                                    content = delta.get("text")
+                                if not content and "text" in choices[0]:
+                                    content = choices[0].get("text")
+                                if not content and "message" in choices[0]:
+                                    content = choices[0]["message"].get("content")
+
+                                if isinstance(content, list):
+                                    text_parts = [
+                                        p.get("text", "") if isinstance(p, dict) else str(p)
+                                        for p in content
+                                    ]
+                                    content = "".join(text_parts)
+                                elif isinstance(content, dict):
+                                    content = content.get("text", "")
+
                                 if content:
-                                    for kind, val in thought_filter.process(content):
+                                    for kind, val in thought_filter.process(str(content)):
                                         if kind == "thinking":
                                             yield StreamChunk(thinking=val)
                                         else:
@@ -418,7 +434,14 @@ class LLMClient:
 
                                 if finish_reason:
                                     yield StreamChunk(finish_reason=finish_reason)
-                return
+
+                        # Guarantee flush of any buffered thought or text when connection ends
+                        for kind, val in thought_filter.flush():
+                            if kind == "thinking":
+                                yield StreamChunk(thinking=val)
+                            else:
+                                yield StreamChunk(text=val)
+                        return
             except (LLMAuthError, LLMError):
                 raise
             except httpx.TimeoutException:

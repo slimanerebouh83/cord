@@ -62,7 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "subcommand",
         nargs="?",
-        choices=["doctor", "tools", "tasks", "models", "setup", "agent", "serve-mcp", "mcp-server", "live", "fleet", "ssh", "cron", "daemon", "ollama", "voice"],
+        choices=[
+            "doctor", "tools", "tasks", "models", "setup", "agent",
+            "serve-mcp", "mcp-server", "live", "fleet", "ssh", "cron",
+            "daemon", "ollama", "voice", "graph", "impact", "sentinel", "radar",
+        ],
         help="CLI subcommand to execute (e.g. cord doctor, cord fleet, cord cron, cord ollama, cord voice, cord live)",
     )
     parser.add_argument(
@@ -310,6 +314,46 @@ async def main_async() -> int:
         table.add_row("API Key Configured", "✓ Yes" if cfg.api_key else "No (using Edge-TTS or env)")
         ui.console.print(table)
         ui.console.print("[dim]Use '/voice' inside chat to configure providers or API keys.[/dim]\n")
+        return 0
+
+    # Subcommand: cord graph
+    if args.subcommand == "graph":
+        from cord.core.code_graph import code_graph_engine
+        code_graph_engine.render_overview()
+        return 0
+
+    # Subcommand: cord impact
+    if args.subcommand == "impact":
+        from cord.core.code_graph import code_graph_engine
+        target = " ".join(args.extra_args) if args.extra_args else "main.py"
+        code_graph_engine.render_blast_radius(target)
+        return 0
+
+    # Subcommand: cord sentinel
+    if args.subcommand == "sentinel":
+        from cord.subagents.sentinel import community_sentinel
+        if args.extra_args and args.extra_args[0] == "triage":
+            topic = " ".join(args.extra_args[1:]) if len(args.extra_args) > 1 else "Community Feature"
+            asyncio.run(community_sentinel.triage_proposal(
+                title=topic,
+                description=f"Community proposed feature/request: {topic}",
+                source="cli",
+            ))
+        else:
+            community_sentinel.render_overview()
+        return 0
+
+    # Subcommand: cord radar
+    if args.subcommand == "radar":
+        from cord.core.tech_radar import tech_radar
+        if args.extra_args and args.extra_args[0] == "install" and len(args.extra_args) > 1:
+            res = tech_radar.install_mcp_server(args.extra_args[1])
+            if res["success"]:
+                ui.print_success(res["message"])
+            else:
+                ui.print_error(res["error"])
+        else:
+            tech_radar.render_radar()
         return 0
 
     # 3. Initialize Subagents Manager

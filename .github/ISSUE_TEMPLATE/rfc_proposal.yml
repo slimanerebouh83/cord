@@ -1,0 +1,37 @@
+name: 📜 Architectural RFC Proposal
+description: Formal Request for Comments to be deliberated by the Subagent Council
+title: "[RFC]: "
+labels: ["rfc", "council-deliberation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RFCs trigger full 4-role swarm council deliberation with weighted voting across Architecture, Security, Developer Experience, and QA.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Executive Summary
+      description: What is the proposed architectural evolution?
+    validations:
+      required: true
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Technical Architecture & API Design
+      description: Detailed breakdown of interfaces, data structures, and lifecycle.
+    validations:
+      required: true
+  - type: textarea
+    id: security_blast_radius
+    attributes:
+      label: Security & Blast Radius Assessment
+      description: Does this introduce external dependencies, permission mutations, or security concerns?
+    validations:
+      required: true
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Verification & Test Strategy
+      description: How will this feature be tested and regressions prevented?
+    validations:
+      required: true
