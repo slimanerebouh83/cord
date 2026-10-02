@@ -81,6 +81,10 @@ def show_interactive_action_menu(repl: Any) -> None:
         "Browse equal peers & dedicated isolated chats"
     )
     table.add_row(
+        "a", "⚡ About CORD System", "[bold cyan]/about[/bold cyan]",
+        "Animated specifications, telemetry & GitHub link"
+    )
+    table.add_row(
         "0", "🚪 Close Menu", "[dim]Esc / Enter[/dim]",
         "Return to interactive chat"
     )
@@ -89,8 +93,8 @@ def show_interactive_action_menu(repl: Any) -> None:
     ui.console.print(Panel(table, border_style="bright_blue", padding=(0, 1)))
 
     choice = Prompt.ask(
-        "[bold cyan]Select an option (0-9, s)[/bold cyan]",
-        choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "s", "q", ""],
+        "[bold cyan]Select an option (0-9, s, a)[/bold cyan]",
+        choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "s", "a", "q", ""],
         default="0",
     ).strip().lower()
 
@@ -147,6 +151,17 @@ def show_interactive_action_menu(repl: Any) -> None:
             loop.create_task(coro)
         except RuntimeError:
             asyncio.run(coro)
+
+    # a. About CORD System
+    elif choice == "a":
+        import asyncio
+        from cord.ui.about import show_about_screen
+        cfg_to_use = getattr(repl, "config", None) or getattr(repl.config_mgr, "config", None)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(show_about_screen(cfg_to_use, animated=True))
+        except RuntimeError:
+            asyncio.run(show_about_screen(cfg_to_use, animated=True))
 
 
 def _handle_mode_selection(repl: Any) -> None:

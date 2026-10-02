@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
         choices=[
             "doctor", "tools", "tasks", "models", "setup", "agent",
             "serve-mcp", "mcp-server", "live", "fleet", "ssh", "cron",
-            "daemon", "ollama", "voice", "graph", "impact", "sentinel", "radar",
+            "daemon", "ollama", "voice", "graph", "impact", "sentinel", "radar", "about",
         ],
         help="CLI subcommand to execute (e.g. cord doctor, cord fleet, cord cron, cord ollama, cord voice, cord live)",
     )
@@ -334,11 +334,11 @@ async def main_async() -> int:
         from cord.subagents.sentinel import community_sentinel
         if args.extra_args and args.extra_args[0] == "triage":
             topic = " ".join(args.extra_args[1:]) if len(args.extra_args) > 1 else "Community Feature"
-            asyncio.run(community_sentinel.triage_proposal(
+            await community_sentinel.triage_proposal(
                 title=topic,
                 description=f"Community proposed feature/request: {topic}",
                 source="cli",
-            ))
+            )
         else:
             community_sentinel.render_overview()
         return 0
@@ -354,6 +354,12 @@ async def main_async() -> int:
                 ui.print_error(res["error"])
         else:
             tech_radar.render_radar()
+        return 0
+
+    # Subcommand: cord about
+    if args.subcommand == "about":
+        from cord.ui.about import show_about_screen
+        await show_about_screen(cfg, animated=True)
         return 0
 
     # 3. Initialize Subagents Manager

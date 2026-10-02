@@ -94,6 +94,7 @@ SLASH_COMMAND_INFO = [
     ("/swarm", "Inspect 10,000+ agent swarm mesh status"),
     ("/copy", "Copy last response or code block to clipboard (/copy [code|all])"),
     ("/mouse", "Toggle native mouse text selection & scrolling (/mouse [on|off|native])"),
+    ("/about", "Show animated system specifications, features & GitHub repo link"),
     ("/help", "Display help reference"),
     ("/exit", "Exit CORD CLI"),
 ]
@@ -456,12 +457,13 @@ class CordREPL:
         swarm_badge = f' <style fg="#a855f7">🤖 {active_sub_count} peer(s)</style>' if active_sub_count else ''
 
         return HTML(
-            f' <b><style fg="#3b82f6">Build</style></b> <b>{model_name}</b> <style fg="#94a3b8">({cur_mode}) {provider}</style>{swarm_badge}\n'
-            f' <style fg="#64748b">esc</style> interrupt   '
-            f'<style fg="#64748b">ctrl+w</style> window   '
-            f'<style fg="#64748b">ctrl+t</style> models   '
-            f'<style fg="#38bdf8">f2/ctrl+a</style> <style fg="#ffffff">agents</style>   '
-            f'<style fg="#64748b">ctrl+s</style> split'
+            f' <b><style fg="#38bdf8">⚡ CORD v1.4.0</style></b> │ <b><style fg="#ffffff">{model_name}</style></b> <style fg="#94a3b8">[{cur_mode} • {provider}]</style>{swarm_badge}\n'
+            f' <style fg="#38bdf8">/about</style> <style fg="#cbd5e1">info</style> │ '
+            f'<style fg="#38bdf8">f2/ctrl+a</style> <style fg="#cbd5e1">agents</style> │ '
+            f'<style fg="#64748b">ctrl+t</style> models │ '
+            f'<style fg="#64748b">ctrl+s</style> split │ '
+            f'<style fg="#64748b">/settings</style> config │ '
+            f'<style fg="#ef4444">ctrl+c</style> abort'
         )
 
     async def run(self) -> None:
@@ -488,6 +490,7 @@ class CordREPL:
 
             pt_style = Style.from_dict({
                 "prompt": "bold #38bdf8",
+                "bottom-toolbar": "bg:#0b192c fg:#38bdf8 bold",
             })
 
             # Launch cooperative background scheduler task
@@ -518,24 +521,25 @@ class CordREPL:
                     if multipane_mgr.is_split:
                         ui.console.print(multipane_mgr.render_multipane_layout())
 
-                    # Render OpenCode-style docked box top border with vertical electric blue accent
+                    # Render docked glowing blue box top border with electric blue accent
                     ui.console.print(
-                        f"\n[bold #2563eb]╭─[/bold #2563eb] [dim white]Ask anything... \"Fix a TODO in the codebase\"[/dim white]"
+                        f"\n[bold #0284c7]╭─[/bold #0284c7][bold #38bdf8]── [bold white]💬 CORD PROMPT CONTAINER[/bold white] [/bold #38bdf8][dim]•[/dim] [dim white]Type prompt or instruction (type / for commands, @ for context)[/dim white]"
                     )
 
                     if is_native:
                         # Fallback native console input
-                        user_input = ui.console.input("[bold #2563eb]│[/bold #2563eb] [bold cyan]cord[/bold cyan] ❯ ")
+                        user_input = ui.console.input("[bold #0284c7]│[/bold #0284c7] [bold cyan]cord[/bold cyan] [bold #38bdf8]❯[/bold #38bdf8] ")
                     else:
-                        # Advanced prompt_toolkit with instant autocomplete popup on '/' and '@'
+                        # Advanced prompt_toolkit with docked container & instant autocomplete popup
                         user_input = await self.session.prompt_async(
-                            HTML("<b><style fg='#2563eb'>│</style></b> "),
+                            HTML("<b><style fg='#0284c7'>│ </style><style fg='#38bdf8'>❯</style></b> "),
+                            placeholder=HTML("<style fg='#64748b'>Type your instructions or prompt here...</style>"),
                             bottom_toolbar=self.get_bottom_toolbar,
                             style=pt_style,
                         )
 
                     # Render Framed Input Bottom Border
-                    ui.console.print("[bold #2563eb]╰" + "─" * (con_width - 1) + "╯[/bold #2563eb]")
+                    ui.console.print("[bold #0284c7]╰" + "─" * (con_width - 1) + "╯[/bold #0284c7]")
 
                     text = user_input.strip()
                     if not text:
@@ -622,6 +626,10 @@ class CordREPL:
 
         elif cmd == "/help":
             self._print_help()
+
+        elif cmd in ("/about", "/info", "/version"):
+            from cord.ui.about import show_about_screen
+            await show_about_screen(self.config_mgr.config, animated=True)
 
         elif cmd in ("/menu", "/dashboard"):
             from cord.ui.action_menu import show_interactive_action_menu
@@ -1393,6 +1401,7 @@ class CordREPL:
         table.add_row("/computer", "Inspect or set Computer Use safety level (OFF/READ_ONLY/INTERACTION/FULL_CONTROL)")
         table.add_row("/stop", "Emergency Kill Switch to instantly halt all computer use and executions")
         table.add_row("/doctor", "Run system diagnostics, environment, provider, and tool health check")
+        table.add_row("/about", "Show animated system specifications, features & GitHub repository")
         table.add_row("/help", "Display this help reference")
         table.add_row("/settings", "Open interactive settings editor (API Key, Base URL, Model, Theme)")
         table.add_row("/undo", "Revert the last file modification made by the agent")

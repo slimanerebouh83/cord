@@ -1,11 +1,11 @@
 # ⚡ CORD CLI — The Autonomous AI Software Engineer & Swarm Mesh
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.3.0-blue.svg" alt="Release: v1.3.0" />
+  <img src="https://img.shields.io/badge/Release-v1.4.0-blue.svg" alt="Release: v1.4.0" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" />
   <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python Versions" />
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform" />
-  <img src="https://img.shields.io/badge/Tests-202%20Passing%20(100%25)-brightgreen.svg" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-207%20Passing%20(100%25)-brightgreen.svg" alt="Tests" />
   <img src="https://img.shields.io/badge/Swarm-10k%2B%20Virtual%20Mesh-purple.svg" alt="Swarm Mesh" />
   <img src="https://img.shields.io/badge/i18n-العربية%20%26%20English-cyan.svg" alt="Multilingual" />
 </p>
@@ -70,6 +70,17 @@ An autonomous maintenance supervisor for GitHub issues, discussions, and feature
 - Peer Deliberation & Consensus Voting across agents via `swarm_bus`.
 - Distinct phase cards with real-time progress indicators.
 
+### 6. 🎨 Ultra-Sleek 1-Line Tool Cards & Docked Blue Prompt Box (`v1.4.0`)
+- **Micro-Card Tool Telemetry**: Eliminated vertical panel clutter. Tool invocations (`Read`, `Edit`, `Run`, `Grep`, `Glob`, `Desktop`) now render as crisp, single-line micro-cards with diff line counts (`+12 -3`) and millisecond execution timers.
+- **Docked Glowing Blue Prompt Box**: Sticky bottom prompt container with glowing cobalt/cyan accents, placeholder text, and active model telemetry toolbar.
+
+### 7. ⚡ Animated `/about` Command & Live Telemetry (`v1.4.0`)
+- Type `/about` (or `cord about`) to trigger a cyber ASCII reveal animation, live system telemetry (Python, OS, active LLM model, Swarm status), full features overview, and official GitHub repository link: [slimanerebouh83/cord](https://github.com/slimanerebouh83/cord).
+
+### 8. 🛡️ Dynamic AI UI Customizer with Immutable App Identity (`v1.4.0`)
+- **`customize_ui` Tool**: Enables the agent to dynamically switch themes (`cord_blue`, `cyberpunk`, `nord`, `monokai`, `dracula`), toggle compact display mode, or change interface language on user command.
+- **Security Policy Guard**: The application identity and name `CORD` is strictly immutable—any attempt to rename or disguise the application is automatically blocked.
+
 ---
 
 ## 📦 Quick Installation (طريقة التثبيت والتشغيل)
@@ -104,6 +115,7 @@ cord agent "Build a high-performance REST API with FastAPI, SQLite, and 100% pyt
 
 | Command / Shortcut | Description | الوظيفة |
 |---|---|---|
+| `cord about` / `/about` | Animated system specs, features & GitHub link | عرض مواصفات النظام والمزايا التفاعلية |
 | `cord graph` / `/graph` | View AST code graph & module hubs | عرض شجرة الكود والاعتماديات البرمجية |
 | `cord impact <target>` / `/impact` | Calculate blast radius & test dependencies | فحص أثر التعديلات والملفات المعتمدة |
 | `cord sentinel` / `/sentinel` | Convene Sentinel Council for issue triage | تشغيل مجلس الرقابة لتقييم الاقتراحات |
@@ -117,16 +129,16 @@ cord agent "Build a high-performance REST API with FastAPI, SQLite, and 100% pyt
 
 ## 🧪 Rigorous Automated Testing (الاختبارات الآلية)
 
-CORD is continuously verified with a multi-OS GitHub Actions CI/CD matrix across Windows and Linux:
+CORD is continuously verified with a multi-OS CI/CD test matrix:
 
 ```bash
 pytest tests/ -v
 ```
 
 ```text
-======================= 202 passed in 116.89s (0:01:56) =======================
+======================= 207 passed in 35.59s =======================
 ```
-✅ **202 unit and integration tests passing at 100% with zero regressions.**
+✅ **207 unit and integration tests passing at 100% with zero regressions.**
 
 ---
 

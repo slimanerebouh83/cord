@@ -25,6 +25,7 @@ READ_ONLY_TOOLS = {
     "ask_user",
     "create_plan",
     "update_plan_step",
+    "customize_ui",
 }
 
 

@@ -558,7 +558,7 @@ async def open_subagent_monitor(repl: Any, subagent: Subagent) -> None:
         )
 
         try:
-            prompt_label = f"[bold #38bdf8]│[/bold #38bdf8] [bold cyan]{subagent.name}[/bold cyan] [dim](Observation Deck)[/dim] ❯ "
+            prompt_label = f"[bold #38bdf8]│[/bold #38bdf8] [bold cyan]{subagent.name}[/bold cyan] [dim](Observation Deck - Esc/0 to Back)[/dim] ❯ "
             user_input = ui.console.input(prompt_label).strip()
         except (KeyboardInterrupt, EOFError):
             ui.console.print("\n[dim]Returning to Main Agent chat...[/dim]\n")
@@ -570,7 +570,7 @@ async def open_subagent_monitor(repl: Any, subagent: Subagent) -> None:
         clean = user_input.strip()
 
         # Exit / Return to Main Agent
-        if clean.lower() in ("0", "q", "/back", "/exit", "/quit", "/main", "back", "exit"):
+        if clean.lower() in ("0", "q", "/back", "/exit", "/quit", "/main", "back", "exit", "esc", "/esc", "b"):
             ui.console.print(f"[dim]Returning to Main Agent chat from [{subagent.name}]...[/dim]\n")
             break
 

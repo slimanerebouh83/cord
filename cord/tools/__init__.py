@@ -68,6 +68,9 @@ from cord.tools.sentinel_tool import SentinelTriageTool
 # Internet Tech Radar & MCP Marketplace
 from cord.tools.tech_radar_tool import TechRadarTool
 
+# Dynamic AI UI Customizer
+from cord.tools.ui_customizer_tool import CustomizeUITool
+
 # Git Tools
 from cord.tools.git.git_status import GitStatusTool
 from cord.tools.git.git_diff import GitDiffTool
@@ -246,5 +249,6 @@ def get_default_tools() -> List[BaseTool]:
         CodeImpactAnalysisTool(),
         SentinelTriageTool(),
         TechRadarTool(),
+        CustomizeUITool(),
     ]
 
